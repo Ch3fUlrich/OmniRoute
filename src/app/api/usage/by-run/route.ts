@@ -5,8 +5,14 @@ import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { getCostBySessionTag } from "@/lib/db/costLedger";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
 
+const RUN_ID_REQUIRED = "run_id query param is required";
+
 const querySchema = z.object({
-  run_id: z.string().trim().min(1).max(256),
+  run_id: z
+    .string({ error: RUN_ID_REQUIRED })
+    .trim()
+    .min(1, { error: RUN_ID_REQUIRED })
+    .max(256, { error: "run_id must be at most 256 characters" }),
 });
 
 /**

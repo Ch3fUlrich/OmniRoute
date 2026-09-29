@@ -201,12 +201,13 @@ test("GET /api/usage/by-run requires the run_id param", async () => {
   const missing = await routeModule.GET(makeRequest("", cookie));
   assert.equal(missing.status, 400);
   const missingBody = (await missing.json()) as ByRunTestBody;
-  assert.equal(typeof missingBody.error.message, "string");
+  assert.equal(missingBody.error.message, "run_id query param is required");
   assert.ok(!missingBody.error.message.includes("at /"), "error body must not leak a stack trace");
 
   const blank = await routeModule.GET(makeRequest("?run_id=%20", cookie));
   assert.equal(blank.status, 400);
   const blankBody = (await blank.json()) as ByRunTestBody;
+  assert.equal(blankBody.error.message, "run_id query param is required");
   assert.ok(!blankBody.error.message.includes("at /"), "error body must not leak a stack trace");
 });
 
