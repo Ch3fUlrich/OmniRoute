@@ -22,6 +22,12 @@ const core = await import("../../src/lib/db/core.ts");
 const costLedger = await import("../../src/lib/db/costLedger.ts");
 const routeModule = await import("../../src/app/api/usage/by-run/route.ts");
 
+interface ByRunTestBody {
+  runId?: string;
+  rows?: Array<Record<string, unknown>>;
+  error?: { message: string };
+}
+
 const ORIGINAL_JWT_SECRET = process.env.JWT_SECRET;
 const ORIGINAL_INITIAL_PASSWORD = process.env.INITIAL_PASSWORD;
 const TEST_JWT_SECRET = "usage-by-run-route-jwt-secret";
@@ -100,7 +106,7 @@ test("GET /api/usage/by-run returns the ledger cost of a call tagged with the ru
   insertLedgerRow("req-1", 0.025);
 
   const response = await routeModule.GET(makeRequest("?run_id=lane-a%2Frun-1", cookie));
-  const body = (await response.json()) as any;
+  const body = (await response.json()) as ByRunTestBody;
 
   assert.equal(response.status, 200);
   assert.equal(body.runId, "lane-a/run-1");
@@ -125,7 +131,7 @@ test("GET /api/usage/by-run excludes calls tagged with another run", async () =>
   insertLedgerRow("req-2", 9.99, "2026-09-14T12:00:00.000Z");
 
   const response = await routeModule.GET(makeRequest("?run_id=lane-a%2Frun-1", cookie));
-  const body = (await response.json()) as any;
+  const body = (await response.json()) as ByRunTestBody;
 
   assert.equal(response.status, 200);
   assert.equal(body.rows.length, 1);
@@ -144,7 +150,7 @@ test("GET /api/usage/by-run matches the tag exactly instead of by prefix", async
   insertLedgerRow("req-run", 0.2, "2026-09-14T12:00:00.000Z");
 
   const laneResponse = await routeModule.GET(makeRequest("?run_id=lane-a", cookie));
-  const laneBody = (await laneResponse.json()) as any;
+  const laneBody = (await laneResponse.json()) as ByRunTestBody;
 
   assert.equal(laneResponse.status, 200);
   assert.deepEqual(
@@ -153,7 +159,7 @@ test("GET /api/usage/by-run matches the tag exactly instead of by prefix", async
   );
 
   const wildcard = await routeModule.GET(makeRequest("?run_id=lane-a%25", cookie));
-  const wildcardBody = (await wildcard.json()) as any;
+  const wildcardBody = (await wildcard.json()) as ByRunTestBody;
   assert.equal(wildcard.status, 200);
   assert.equal(wildcardBody.rows.length, 0, "a LIKE wildcard must not widen the match");
 });
@@ -165,7 +171,7 @@ test("GET /api/usage/by-run omits a call that has no ledger row", async () => {
   insertCallLog(db, { id: "call-1", correlationId: "req-unpriced", sessionTag: "lane-a/run-1" });
 
   const response = await routeModule.GET(makeRequest("?run_id=lane-a%2Frun-1", cookie));
-  const body = (await response.json()) as any;
+  const body = (await response.json()) as ByRunTestBody;
 
   assert.equal(response.status, 200);
   assert.equal(body.rows.length, 0);
@@ -180,7 +186,7 @@ test("GET /api/usage/by-run orders rows newest first", async () => {
   insertLedgerRow("req-new", 0.2, "2026-09-14T00:00:00.000Z");
 
   const response = await routeModule.GET(makeRequest("?run_id=lane-a%2Frun-1", cookie));
-  const body = (await response.json()) as any;
+  const body = (await response.json()) as ByRunTestBody;
 
   assert.equal(response.status, 200);
   assert.deepEqual(
@@ -194,16 +200,19 @@ test("GET /api/usage/by-run requires the run_id param", async () => {
 
   const missing = await routeModule.GET(makeRequest("", cookie));
   assert.equal(missing.status, 400);
-  const missingBody = (await missing.json()) as any;
-  assert.equal(missingBody.error, "run_id query param is required");
+  const missingBody = (await missing.json()) as ByRunTestBody;
+  assert.equal(typeof missingBody.error.message, "string");
+  assert.ok(!missingBody.error.message.includes("at /"), "error body must not leak a stack trace");
 
   const blank = await routeModule.GET(makeRequest("?run_id=%20", cookie));
   assert.equal(blank.status, 400);
+  const blankBody = (await blank.json()) as ByRunTestBody;
+  assert.ok(!blankBody.error.message.includes("at /"), "error body must not leak a stack trace");
 });
 
 test("GET /api/usage/by-run requires management authentication", async () => {
   const response = await routeModule.GET(makeRequest("?run_id=lane-a%2Frun-1"));
-  const body = (await response.json()) as any;
+  const body = (await response.json()) as ByRunTestBody;
 
   assert.equal(response.status, 401);
   assert.equal(body.error.message, "Authentication required");

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
+
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { getCostBySessionTag } from "@/lib/db/costLedger";
+import { buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
+
+const querySchema = z.object({
+  run_id: z.string().trim().min(1).max(256),
+});
 
 /**
  * GET /api/usage/by-run?run_id=<id> — per-run cost rows, read from the
@@ -17,15 +24,23 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const runId = (searchParams.get("run_id") || "").trim();
-    if (!runId) {
-      return NextResponse.json({ error: "run_id query param is required" }, { status: 400 });
+    const parsed = querySchema.safeParse({
+      run_id: searchParams.get("run_id") || undefined,
+    });
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        buildErrorBody(400, parsed.error.issues[0]?.message ?? "Invalid query parameters"),
+        { status: 400 }
+      );
     }
 
-    const rows = getCostBySessionTag(runId);
-    return NextResponse.json({ runId, rows });
+    const rows = getCostBySessionTag(parsed.data.run_id);
+    return NextResponse.json({ runId: parsed.data.run_id, rows });
   } catch (error) {
     console.error("[API] GET /api/usage/by-run error:", error);
-    return NextResponse.json({ error: "Failed to fetch per-run costs" }, { status: 500 });
+    return NextResponse.json(buildErrorBody(500, "Failed to fetch per-run costs"), {
+      status: 500,
+    });
   }
 }
