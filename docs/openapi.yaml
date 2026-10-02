@@ -6503,6 +6503,121 @@ paths:
         "503":
           description: Telegram integration is not configured
 
+  /api/async-jobs:
+    post:
+      tags: [System]
+      summary: Create an async job for work handed to an external system
+      description: >-
+        Creates a pending job and returns the callback path, the header name and a per-job
+        token. The token is shown once (only its SHA-256 is stored). The external system
+        answers on `POST /api/async-callbacks/{jobId}`; the creator polls
+        `GET /api/async-jobs/{jobId}`. An identical `idempotencyKey` inside 15 minutes returns
+        the existing pending, running or completed job (HTTP 200, no token); failed and expired
+        jobs are never reused. A job nobody answers for `ttlSeconds` (default 2 h) becomes
+        `expired`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                kind:
+                  type: string
+                  maxLength: 64
+                idempotencyKey:
+                  type: string
+                  maxLength: 200
+                metadata:
+                  type: object
+                  additionalProperties: true
+                ttlSeconds:
+                  type: integer
+                  minimum: 60
+                  maximum: 86400
+      responses:
+        "200":
+          description: Existing job returned for an identical idempotency key
+        "201":
+          description: Job created; the response carries the one-time callback token
+        "400":
+          description: Invalid request body
+
+  /api/async-jobs/{jobId}:
+    get:
+      tags: [System]
+      summary: Poll an async job
+      description: >-
+        Returns status (`pending`, `running`, `completed`, `failed`, `expired`), result, error
+        and timestamps. The callback token is never returned. A job past its expiry reads as
+        `expired`.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The job
+        "404":
+          description: Unknown job
+
+  /api/async-callbacks/{jobId}:
+    post:
+      tags: [System]
+      summary: Deliver progress or the result of an async job
+      description: >-
+        Public, token-gated callback for the external system. There is no dashboard session or
+        API key: the per-job token in the `X-Callback-Token` header is the authentication, checked
+        before the body is read (an unknown job and a wrong token answer alike). Then a per-job
+        rate limit (30 a minute), a 256 KiB body cap and strict validation. Only a pending or
+        running job can move; a late callback for a completed, failed or expired job answers 409.
+      security: []
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: X-Callback-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [running, progress, completed, failed]
+                result:
+                  type: string
+                  maxLength: 200000
+                error:
+                  type: string
+                  maxLength: 2000
+      responses:
+        "200":
+          description: Callback applied
+        "400":
+          description: Invalid body
+        "401":
+          description: Missing or invalid callback token (also for an unknown job)
+        "409":
+          description: The job is already in a terminal state
+        "413":
+          description: Body larger than 256 KiB
+        "429":
+          description: Rate limit exceeded
+
   /api/resilience/reset:
     post:
       tags: [System]
