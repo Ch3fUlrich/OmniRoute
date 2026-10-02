@@ -85,7 +85,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
       result,
       error,
     });
-    if (!outcome.ok) {
+    if (outcome.ok === false) {
       if (outcome.reason === "terminal") {
         // Names only: the job id and its state. Never the token, the body or any header.
         logger.warn(`[async-jobs] late callback rejected: job=${jobId} status=${outcome.status}`);
