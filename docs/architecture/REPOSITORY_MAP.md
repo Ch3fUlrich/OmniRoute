@@ -206,7 +206,7 @@ src/
 | `cacheLayer.ts`, `idempotencyLayer.ts`   | Request caching + idempotency                                                                                                                                                                                                                                                                                           |
 | (~30 more top-level files)               | Specialized helpers (logEnv, modelsDevSync, piiSanitizer, etc.)                                                                                                                                                                                                                                                         |
 
-### `src/lib/db/` — Database (137 modules + 193 migrations)
+### `src/lib/db/` — Database (138 modules + 194 migrations)
 
 | Subdir                    | Purpose                                                                                                                                                                    |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

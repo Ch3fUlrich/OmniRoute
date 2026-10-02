@@ -33,6 +33,13 @@ const PUBLIC_API_ROUTE_PREFIXES = [
   // OmniRoute-minted session JWT that exchange returns. See
   // open-sse/handlers/cursorCliProxy.ts. Do not widen.
   "/api/cursor-cli/",
+  // Async-job callbacks: an external system POSTs the result of work OmniRoute handed to it.
+  // There is no dashboard cookie or API key on this route; the handler enforces its own auth,
+  // the per-job callback token (hash compared in constant time), before it reads any body,
+  // then a per-job rate limit, a capped body read and strict validation. The creator's routes
+  // (/api/async-jobs, /api/async-jobs/{id}) are NOT under this prefix and stay MANAGEMENT.
+  // See src/app/api/async-callbacks/[jobId]/route.ts. Do not widen.
+  "/api/async-callbacks/",
 ];
 
 // Single routes, public by EXACT path (both spellings) — never by prefix.
