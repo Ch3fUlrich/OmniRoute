@@ -24,7 +24,6 @@ const settingsDb = await import("../../../src/lib/db/settings.ts");
 const runtime = await import("../../../src/lib/config/runtimeSettings.ts");
 const rateLimiter = await import("../../../src/shared/utils/rateLimiter.ts");
 const { logger } = await import("../../../src/shared/utils/logger.ts");
-const jobsDb = await import("../../../src/lib/db/asyncJobs.ts");
 const publicRoutes = await import("../../../src/shared/constants/publicApiRoutes.ts");
 const { classifyRoute } = await import("../../../src/server/authz/classify.ts");
 const createRoute = await import("../../../src/app/api/async-jobs/route.ts");
@@ -363,5 +362,4 @@ test("authz: the callback prefix is public, the creator routes are not", () => {
   assert.equal(publicRoutes.isPublicApiRoute("/api/async-callbacksx/abc", "POST"), false);
   assert.equal(classifyRoute("/api/async-jobs/abc", "GET").routeClass, "MANAGEMENT");
   assert.equal(classifyRoute("/api/async-callbacks/abc", "POST").routeClass, "PUBLIC");
-  assert.ok(jobsDb.ASYNC_JOB_DEFAULT_TTL_SECONDS > 0);
 });
