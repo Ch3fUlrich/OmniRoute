@@ -7,6 +7,7 @@ import { FORMATS } from "../formats.ts";
 import { appendToolCallArgumentDelta } from "../../utils/toolCallArguments.ts";
 import { projectCompletedStreamError } from "../../utils/streamErrorFormat.ts";
 import { fallbackToolCallId } from "../helpers/toolCallHelper.ts";
+import { finalizeResponsesTerminalStatus } from "../helpers/responsesTerminalStatus.ts";
 import { shouldParseTextualReasoningTags } from "../../handlers/responseSanitizer.ts";
 import { getReadableReasoningValue } from "../../utils/reasoningFields.ts";
 import { resolveResponsesCacheUsageDetails } from "../../utils/resolveResponsesCacheUsageDetails.ts";
@@ -354,6 +355,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
 
   // Handle finish_reason
   if (choice.finish_reason) {
+    state.finishReason = choice.finish_reason; // read by sendCompleted() → finalizeResponsesTerminalStatus
     for (const i in state.msgItemAdded) closeMessage(state, emit, i);
     closeReasoning(state, emit);
     for (const i in state.funcCallIds) closeToolCall(state, emit, i);
@@ -812,7 +814,7 @@ function sendCompleted(state, emit) {
     const output = buildDenseOutput(state);
 
     // Surface upstream mid-stream errors (e.g. Gemini 503) in the
-    // Responses-API `response.completed` event instead of silently emitting
+    // Responses-API `response.failed` event instead of silently emitting
     // `status: "completed"`. The error is set by the Gemini-to-OpenAI
     // translator or the OpenAI-Responses translator itself when the upstream
     // SSE stream emits a JSON error object after partial content.
@@ -838,10 +840,8 @@ function sendCompleted(state, emit) {
       response.usage = state.usage;
     }
 
-    emit("response.completed", {
-      type: "response.completed",
-      response,
-    });
+    const eventType = finalizeResponsesTerminalStatus(response, state.finishReason, !!upstreamErr);
+    emit(eventType, { type: eventType, response });
   }
 }
 
@@ -849,6 +849,17 @@ function flushEvents(state) {
   if (state.completedSent) return [];
 
   const { events, emit } = createEventEmitter(state);
+
+  // EOF is not a Chat Completions finish signal. Preserve partial items, but
+  // surface the missing upstream terminal instead of manufacturing success.
+  if (!state.finishReason && !state.upstreamError) {
+    state.upstreamError = {
+      status: 502,
+      type: "server_error",
+      code: "stream_early_eof",
+      message: "Upstream stream ended without a terminal marker",
+    };
+  }
 
   for (const i in state.msgItemAdded) closeMessage(state, emit, i);
   closeReasoning(state, emit);
