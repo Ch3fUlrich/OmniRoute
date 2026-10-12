@@ -3,11 +3,26 @@
 // in the prompt text so a single script covers every path; it never touches the
 // network or the filesystem except the optional log/pid files named in env.
 import { appendFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 
 const LOG = process.env.FAKE_ACP_LOG;
 const PIDFILE = process.env.FAKE_ACP_PIDFILE;
 if (PIDFILE) writeFileSync(PIDFILE, String(process.pid));
+
+// The environment variable the executor is expected to inject the connection token
+// into; tests aiming at another agent point it at that agent's `tokenEnv`.
+const TOKEN_ENV = process.env.FAKE_ACP_TOKEN_ENV || "QODER_PERSONAL_ACCESS_TOKEN";
+const TOKEN = process.env[TOKEN_ENV] || "";
+// Variables an env-report test asks about (comma-separated names).
+const REPORT_VARS = (process.env.FAKE_ACP_REPORT_VARS || "").split(",").filter(Boolean);
+
+function envReport(name) {
+  const value = process.env[name];
+  if (typeof value !== "string") return "unset";
+  // Never print the value: only whether it is set and a short hash of it.
+  return `set:${createHash("sha256").update(value).digest("hex").slice(0, 8)}`;
+}
 
 const MODELS = (process.env.FAKE_ACP_MODELS || "alpha,beta").split(",").filter(Boolean);
 const NO_MODELS = process.env.FAKE_ACP_NO_MODELS === "1";
@@ -144,10 +159,39 @@ async function handlePrompt(id, params) {
   if (text.includes("REFUSE")) {
     return finish("refusal");
   }
+  if (text.includes("ENVREPORT")) {
+    const vars = REPORT_VARS.map((name) => `${name}=${envReport(name)}`).join(",");
+    const argv = process.argv.slice(1).map((a) => JSON.stringify(a)).join(" ");
+    chunk("agent_message_chunk", `envreport|${vars}|argv=${argv}|`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKOUT")) {
+    // Echo the injected token bare, mid-word, and split across two chunks. A missing
+    // token is reported as such so the test can tell an injection failure from a
+    // masking failure.
+    if (!TOKEN) {
+      chunk("agent_message_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_message_chunk", `say ${TOKEN} now`);
+    chunk("agent_message_chunk", `abc${TOKEN.slice(0, 4)}`);
+    chunk("agent_message_chunk", `${TOKEN.slice(4)}def`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKSTDERR")) {
+    process.stderr.write(`fake agent exploded: token is ${TOKEN || "none"}\n`);
+    setTimeout(() => process.exit(3), 10);
+    return;
+  }
+  if (text.includes("MASKRPC")) {
+    send({ id, error: { code: -32000, message: `invalid credential: ${TOKEN || "none"}` } });
+    promptId = null;
+    return;
+  }
   if (text.includes("ECHO")) {
     chunk("agent_message_chunk", `prompt=${text}`);
     chunk("agent_message_chunk", `|cwd=${sessionCwd}|model=${selectedModel}|mode=${selectedMode}`);
-    chunk("agent_message_chunk", `|token=${process.env.QODER_PERSONAL_ACCESS_TOKEN || "none"}`);
+    chunk("agent_message_chunk", `|token=${TOKEN || "none"}`);
     chunk("agent_message_chunk", `|spawncwd=${process.cwd()}`);
     chunk("agent_message_chunk", `|leak=${process.env.OMNIROUTE_ACP_LEAK_PROBE || "none"}`);
     return finish("end_turn");

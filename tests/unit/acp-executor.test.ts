@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -67,10 +68,14 @@ function readLog(path: string): LogEntry[] {
     .map((line) => JSON.parse(line));
 }
 
-async function makeExecutor(extra: Opts = {}, env: Record<string, string> = {}) {
+async function makeExecutor(
+  extra: Opts = {},
+  env: Record<string, string> = {},
+  agentId = "qoder"
+) {
   const { AcpExecutor } = await load();
   const s = scratch();
-  const executor = new AcpExecutor("qoder", {
+  const executor = new AcpExecutor(agentId, {
     command: process.execPath,
     args: [fixture],
     env: { FAKE_ACP_LOG: s.log, FAKE_ACP_PIDFILE: s.pid, ...env },
@@ -439,12 +444,167 @@ test("an api key is handed to the agent through its token environment variable o
       })
       .then(unwrap)
   );
-  assert.match(json.choices[0].message.content, /\|token=pt-dummy-token\|/);
+  // The agent does receive it and echoes it back, but the echo never reaches the caller.
+  assert.match(json.choices[0].message.content, /\|token=\[redacted\]\|/);
+  assert.equal(json.choices[0].message.content.includes("pt-dummy-token"), false);
   assert.equal(
     JSON.stringify(readLog(s.log)).includes("pt-dummy-token"),
     false,
     "never on the wire"
   );
+});
+
+// ── masking the injected token in agent output ────────────────────────────────
+
+const MASK_SECRET = "mask-me-token-9012";
+
+/** Run one turn against a qwen-code-shaped agent whose token env is echoed back. */
+async function runWithTokenEnvKey(text: string, stream: boolean, apiKey = MASK_SECRET) {
+  const { executor } = await makeExecutor(
+    {},
+    { FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY" },
+    "qwen-code"
+  );
+  return unwrap(
+    await executor.execute({
+      model: "alpha",
+      body: body(text),
+      stream,
+      credentials: apiKey ? { apiKey } : {},
+    })
+  );
+}
+
+test("a token echoed bare, mid-word and across two streamed chunks is masked (non-stream)", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKOUT", false));
+  const content: string = json.choices[0].message.content;
+  assert.equal(content.includes(MASK_SECRET), false, "the key never appears in the content");
+  assert.match(content, /say \[redacted\] now/); // bare
+  assert.match(content, /abc\[redacted\]def/); // mid-word + split across chunks
+});
+
+test("a token echoed across streamed chunks is masked in every SSE delta", async () => {
+  const response = await runWithTokenEnvKey("MASKOUT", true);
+  const text = await response.text();
+  assert.equal(text.includes(MASK_SECRET), false, "the key never appears in the stream");
+  const deltas = sseEvents(text)
+    .map((e) => e.choices?.[0]?.delta?.content)
+    .filter((c) => c);
+  assert.deepEqual(deltas, ["say [redacted] now", "abc[redacted]def"]);
+  assert.match(text, /data: \[DONE\]\s*$/);
+});
+
+test("an injected value shorter than 8 characters is not masked", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKOUT", false, "abc123"));
+  assert.match(json.choices[0].message.content, /say abc123 now/);
+});
+
+test("no connection key: the token report passes through untouched", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKOUT", false, ""));
+  assert.match(json.choices[0].message.content, /no-token/);
+});
+
+test("a token appearing in the agent stderr tail is masked in the error", async () => {
+  const response = await runWithTokenEnvKey("MASKSTDERR", false);
+  assert.equal(response.status, 502);
+  const json = await completion(response);
+  assert.match(json.error.message, /exited|closed/i);
+  assert.equal(json.error.message.includes(MASK_SECRET), false);
+  assert.match(json.error.message, /\[redacted\]/);
+});
+
+test("a token appearing in a JSON-RPC error message is masked", async () => {
+  const response = await runWithTokenEnvKey("MASKRPC", false);
+  assert.equal(response.status, 401);
+  const json = await completion(response);
+  assert.match(json.error.message, /invalid credential/);
+  assert.equal(json.error.message.includes(MASK_SECRET), false);
+  assert.match(json.error.message, /\[redacted\]/);
+});
+
+test("a token in the streamed error event is masked", async () => {
+  const response = await runWithTokenEnvKey("MASKSTDERR", true);
+  const text = await response.text();
+  assert.equal(text.includes(MASK_SECRET), false);
+  assert.equal(
+    sseEvents(text).some((e) => e.error),
+    true
+  );
+});
+
+// ── the environment and argv given to the child ───────────────────────────────
+
+const GW_OPENAI_SECRET = "gw-secret-0001";
+const GW_QODER_SECRET = "gw-qoder-0002";
+const CONN_KEY = "conn-key-xyz123";
+const REPORTED_VARS = "OPENAI_API_KEY,QODER_PERSONAL_ACCESS_TOKEN";
+
+function hash8(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 8);
+}
+
+/** Ask the fixture how the named variables look inside the child, as set:<hash8>/unset. */
+async function childEnvReport(agentId: string, apiKey: string): Promise<string> {
+  const saved = {
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    QODER_PERSONAL_ACCESS_TOKEN: process.env.QODER_PERSONAL_ACCESS_TOKEN,
+  };
+  process.env.OPENAI_API_KEY = GW_OPENAI_SECRET;
+  process.env.QODER_PERSONAL_ACCESS_TOKEN = GW_QODER_SECRET;
+  try {
+    const { executor } = await makeExecutor(
+      {},
+      { FAKE_ACP_REPORT_VARS: REPORTED_VARS },
+      agentId
+    );
+    const response = unwrap(
+      await executor.execute({
+        model: "alpha",
+        body: body("ENVREPORT"),
+        stream: false,
+        credentials: apiKey ? { apiKey } : {},
+      })
+    );
+    const json = await completion(response);
+    if (json.error) return `ERROR ${response.status}: ${json.error.message}`;
+    return json.choices[0].message.content;
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+}
+
+test("qwen-code gets the connection key in OPENAI_API_KEY, never the gateway's own", async () => {
+  const report = await childEnvReport("qwen-code", CONN_KEY);
+  assert.match(report, new RegExp(`OPENAI_API_KEY=set:${hash8(CONN_KEY)}\\b`));
+  assert.equal(report.includes(hash8(GW_OPENAI_SECRET)), false);
+  assert.match(report, /QODER_PERSONAL_ACCESS_TOKEN=unset/);
+  assert.equal(
+    [CONN_KEY, GW_OPENAI_SECRET, GW_QODER_SECRET].some((secret) => report.includes(secret)),
+    false,
+    "no value is ever printed, and none travels in argv"
+  );
+});
+
+test("qwen-code with no connection key leaves OPENAI_API_KEY unset in the child", async () => {
+  const report = await childEnvReport("qwen-code", "");
+  assert.match(report, /OPENAI_API_KEY=unset/);
+  assert.match(report, /QODER_PERSONAL_ACCESS_TOKEN=unset/);
+});
+
+test("qoder gets the connection key in QODER_PERSONAL_ACCESS_TOKEN", async () => {
+  const report = await childEnvReport("qoder", CONN_KEY);
+  assert.match(report, new RegExp(`QODER_PERSONAL_ACCESS_TOKEN=set:${hash8(CONN_KEY)}\\b`));
+  assert.match(report, /OPENAI_API_KEY=unset/);
+  assert.equal(report.includes(hash8(GW_QODER_SECRET)), false);
+});
+
+test("opencode has no token env and receives neither variable", async () => {
+  const report = await childEnvReport("opencode", CONN_KEY);
+  assert.match(report, /OPENAI_API_KEY=unset/);
+  assert.match(report, /QODER_PERSONAL_ACCESS_TOKEN=unset/);
 });
 
 test("gateway environment variables are not inherited by the agent", async () => {
