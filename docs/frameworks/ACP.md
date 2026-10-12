@@ -125,7 +125,9 @@ launch specs live in `open-sse/executors/acpAgents.ts` (`qoder`, `qwen-code`,
   `dontAsk`; a warning is logged if the agent does not offer it). An optional connection token is
   handed to the agent as its own environment variable, so a caller can coax the agent into
   printing it: text that exactly repeats the injected token is masked to `[redacted]` in the
-  streamed and non-stream output, the agent stderr tail and the reported error messages, but an
+  streamed and non-stream output, the agent stderr tail and the reported error messages (one
+  shared masking buffer covers content and reasoning, so a key split across chunks of either
+  kind is still masked as one), but an
   agent can still transform or encode it, so prefer the CLI's own login, and only expose the
   provider to callers you trust.
   `ACP_PERMISSION_POLICY=allow` lets every caller trigger auto-approved tool execution.

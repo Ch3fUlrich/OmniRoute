@@ -39,21 +39,31 @@ function maskExactValues(text: string, values: readonly string[]): string {
   return out;
 }
 
+/** One piece of masked stream text with the kind (content/reasoning) it arrived under. */
+export type AcpMaskedPiece = { kind: string; text: string };
+
 /**
  * Masks the literal token values the executor injected into the agent's environment.
  * The agent's text is untrusted: an agent that prints its own token must not deliver
- * it. Matching is exact-substring only — no pattern guessing. `feed()` holds back the
- * longest possible partial match so a value split across two streamed chunks is still
- * recognized; `flush()` releases what is left once the turn is over.
+ * it. Matching is exact-substring only — no pattern guessing. `feed()` tags each piece
+ * with the kind it arrived under and holds back the longest possible partial match,
+ * with one pending buffer over the whole turn, so a value split across two chunks —
+ * even chunks of different kinds — is masked instead of delivered in halves. A
+ * completed match is emitted under the kind of its first piece, keeping the order of
+ * everything else. `flush()` releases what is still withheld once the turn is over.
  */
 export class AcpTextMasker {
   private readonly values: string[];
   private readonly longest: number;
+  private readonly firstChars: Set<string>;
   private pending = "";
+  /** Kind per buffered character, so withheld text is emitted under its own kind. */
+  private pendingKinds: string[] = [];
 
   constructor(values: readonly (string | undefined)[]) {
     this.values = [...new Set(values.filter(hasLength))].sort((a, b) => b.length - a.length);
     this.longest = this.values.length ? this.values[0].length : 0;
+    this.firstChars = new Set(this.values.map((value) => value.slice(0, 1)));
   }
 
   /** Mask a whole string at once (error messages, log lines). */
@@ -63,34 +73,71 @@ export class AcpTextMasker {
   }
 
   /**
-   * Mask one streamed piece. Every match inside the accumulated text is replaced, and
-   * only the suffix that could still grow into a match is withheld, so a value split
-   * across two chunks is masked instead of being emitted in halves.
+   * Mask one streamed piece of kind `kind`. Every match inside the accumulated turn
+   * text is replaced, and only the suffix that could still grow into a match is
+   * withheld, regardless of the kinds the withheld characters arrived under.
    */
-  feed(text: string): string {
-    if (!this.values.length) return text;
-    this.pending = this.mask(this.pending + text);
-    const hold = this.withholdable();
-    const emit = this.pending.slice(0, this.pending.length - hold);
-    this.pending = hold ? this.pending.slice(this.pending.length - hold) : "";
-    return emit;
+  feed(text: string, kind: string): AcpMaskedPiece[] {
+    if (!this.values.length) return text ? [{ kind, text }] : [];
+    const acc = this.pending + text;
+    const kinds = this.pendingKinds.concat(new Array(text.length).fill(kind));
+    return this.scan(acc, kinds, false);
   }
 
-  /** Mask and release whatever is still withheld. */
-  flush(): string {
-    const tail = this.pending;
+  /** Mask and release whatever is still withheld; nothing can complete the match now. */
+  flush(): AcpMaskedPiece[] {
+    const acc = this.pending;
+    const kinds = this.pendingKinds;
     this.pending = "";
-    return this.mask(tail);
+    this.pendingKinds = [];
+    if (!this.values.length || !acc) return [];
+    return this.scan(acc, kinds, true);
   }
 
-  /** Length of the longest suffix of `pending` that is a proper prefix of a value. */
-  private withholdable(): number {
-    const max = Math.min(this.pending.length, this.longest - 1);
-    for (let length = max; length > 0; length -= 1) {
-      const tail = this.pending.slice(-length);
-      if (this.values.some((value) => value.startsWith(tail))) return length;
+  private scan(acc: string, kinds: string[], final: boolean): AcpMaskedPiece[] {
+    const pieces: AcpMaskedPiece[] = [];
+    let buf = "";
+    let bufKind = "";
+    let i = 0;
+    while (i < acc.length) {
+      if (buf && bufKind !== kinds[i]) {
+        pieces.push({ kind: bufKind, text: buf });
+        buf = "";
+      }
+      bufKind = kinds[i];
+      const match = this.matchAt(acc, i);
+      if (match) {
+        buf += ACP_REDACTED;
+        i += match.length;
+        continue;
+      }
+      if (!final && this.firstChars.has(acc[i]) && this.isProperPrefixOfValue(acc, i)) break;
+      buf += acc[i];
+      i += 1;
     }
-    return 0;
+    if (i < acc.length) {
+      this.pending = acc.slice(i);
+      this.pendingKinds = kinds.slice(i);
+    } else {
+      this.pending = "";
+      this.pendingKinds = [];
+    }
+    if (buf) pieces.push({ kind: bufKind, text: buf });
+    return pieces;
+  }
+
+  /** The longest value starting at `index`, if any (values are sorted longest-first). */
+  private matchAt(acc: string, index: number): string | undefined {
+    for (const value of this.values) {
+      if (acc.startsWith(value, index)) return value;
+    }
+    return undefined;
+  }
+
+  /** True when the remainder from `index` could still grow into a whole value. */
+  private isProperPrefixOfValue(acc: string, index: number): boolean {
+    const rest = acc.slice(index);
+    return rest.length < this.longest && this.values.some((value) => value.startsWith(rest));
   }
 }
 
@@ -332,11 +379,26 @@ export class AcpClient {
           typeof err.message === "string"
             ? this.secretMasker.mask(err.message)
             : "ACP agent returned an error",
-          err.data
+          this.maskErrorData(err.data)
         )
       );
     } else {
       entry.resolve(message.result);
+    }
+  }
+
+  /**
+   * An agent-supplied `error.data` is untrusted text: mask the injected token in it
+   * (string leaves via a JSON round trip; anything unserializable degrades to a
+   * masked string) so no caller can surface the key from the stored error.
+   */
+  private maskErrorData(data: unknown): unknown {
+    if (typeof data === "string") return this.secretMasker.mask(data);
+    if (data === null || data === undefined || typeof data !== "object") return data;
+    try {
+      return JSON.parse(this.secretMasker.mask(JSON.stringify(data)));
+    } catch {
+      return this.secretMasker.mask(String(data));
     }
   }
 
