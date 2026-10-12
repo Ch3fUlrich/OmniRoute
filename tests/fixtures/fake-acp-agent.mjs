@@ -161,7 +161,10 @@ async function handlePrompt(id, params) {
   }
   if (text.includes("ENVREPORT")) {
     const vars = REPORT_VARS.map((name) => `${name}=${envReport(name)}`).join(",");
-    const argv = process.argv.slice(1).map((a) => JSON.stringify(a)).join(" ");
+    const argv = process.argv
+      .slice(1)
+      .map((a) => JSON.stringify(a))
+      .join(" ");
     chunk("agent_message_chunk", `envreport|${vars}|argv=${argv}|`);
     return finish("end_turn");
   }
