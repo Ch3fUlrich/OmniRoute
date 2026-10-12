@@ -99,6 +99,7 @@ const lazyExecutors: Record<string, () => Promise<BaseExecutor>> = {
   "devin-cli": () => import("./devin-cli.ts").then((m) => new m.DevinCliExecutor()),
   zcode: () => import("./zcode.ts").then((m) => new m.ZcodeExecutor()),
   zc: () => import("./zcode.ts").then((m) => new m.ZcodeExecutor()), // Alias
+  "qoder-acp": () => import("./acp.ts").then((m) => new m.AcpExecutor("qoder")),
   "devin-cli-agentic": () =>
     import("./devin-cli-agentic.ts").then((m) => new m.DevinCliAgenticExecutor()),
   devin: () => import("./devin-cli.ts").then((m) => new m.DevinCliExecutor()), // Alias

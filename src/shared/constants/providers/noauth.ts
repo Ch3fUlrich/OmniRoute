@@ -116,6 +116,24 @@ export const NOAUTH_PROVIDERS = {
       text: "ZCode runs locally through its native app-server. OmniRoute never receives or stores the Z.ai credential.",
     },
   },
+  "qoder-acp": {
+    id: "qoder-acp",
+    alias: "qoacp",
+    name: "Qoder CLI (ACP)",
+    icon: "terminal",
+    color: "#6C47FF",
+    textIcon: "QA",
+    website: "https://docs.qoder.com/cli/acp",
+    noAuth: true,
+    hasFree: false,
+    serviceKinds: ["llm"],
+    isLocalCli: true,
+    authHint:
+      "No API key required. OmniRoute starts `qodercli --acp` locally and uses its existing login; an optional Personal Access Token connection is handed to the agent instead.",
+    notice: {
+      text: "Qoder CLI (ACP) requires the `qodercli` binary on this machine. Each request runs in an empty scratch directory with permission requests rejected (the agent keeps its own home and login).",
+    },
+  },
   "codex-app-server": {
     id: "codex-app-server",
     alias: "cxa",

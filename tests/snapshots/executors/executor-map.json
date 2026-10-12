@@ -540,6 +540,11 @@
       "configSource": "qoder",
       "provider": "qoder"
     },
+    "qoder-acp": {
+      "className": "AcpExecutor",
+      "configSource": "<custom-config>",
+      "provider": "qoder-acp"
+    },
     "stx": {
       "className": "SyntxExecutor",
       "configSource": "<custom-config>",
@@ -701,6 +706,6 @@
       "provider": "zai-web"
     }
   },
-  "keyCount": 140,
+  "keyCount": 142,
   "sharedInstances": []
 }

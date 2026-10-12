@@ -107,6 +107,29 @@ cause an unhandled EventEmitter error.
   native ACP rejects raw input to protect its JSON-RPC stream.
 - `killAll()` terminates every session managed by that instance.
 
+## Generic ACP executor (request path)
+
+`open-sse/executors/acp.ts` is a chat-completions executor that drives an ACP agent
+over stdio (`initialize` → `session/new` → `session/prompt`) and maps `session/update`
+chunks to OpenAI chat-completion responses, streaming and non-streaming. Agent
+launch specs live in `open-sse/executors/acpAgents.ts` (`qoder`, `qwen-code`,
+`opencode`); only `qoder-acp` is wired as a provider. The binary comes from
+`CLI_QODER_BIN` / `CLI_QWEN_BIN` / `CLI_OPENCODE_BIN`, spawned without a shell (a Windows `.cmd`/`.bat` shim is the only exception).
+
+- Permission requests are rejected by default (`ACP_PERMISSION_POLICY=allow` opts in);
+  file-system and terminal client requests are always refused.
+- Client abort sends `session/cancel`, then kills the process after a grace period;
+  a turn timeout or protocol error kills the process.
+- The agent runs as the gateway user in an empty scratch directory; that directory is a working
+  directory, not a sandbox. Tool use is limited by the agent's own mode (`qoder` is put into
+  `dontAsk`; a warning is logged if the agent does not offer it). An optional connection token is
+  handed to the agent as its own environment variable, so a caller can coax the agent into
+  printing it: prefer the CLI's own login, and only expose the provider to callers you trust.
+  `ACP_PERMISSION_POLICY=allow` lets every caller trigger auto-approved tool execution.
+- Usage is reported when the agent provides it and estimated otherwise.
+- Tuning: `ACP_CWD`, `ACP_TURN_TIMEOUT_MS`, `ACP_REQUEST_TIMEOUT_MS`, `ACP_MAX_CONCURRENT`
+  (see the environment reference).
+
 ## Validation boundaries
 
 Deterministic fixtures cover the native handshake, text output, denied

@@ -31,6 +31,9 @@ export const FREE_APIKEY_PROVIDER_IDS = new Set([
   "auggie",
   // zcode is a local app-server backend; auth stays in the ZCode profile.
   "zcode",
+  // qoder-acp drives `qodercli --acp` locally; the Qoder login lives in the CLI profile, and an
+  // optional Personal Access Token connection is passed to the agent through its environment.
+  "qoder-acp",
   // AI Horde works anonymously (`0000000000`) and also accepts a free registered
   // key for higher queue priority. The no-auth page still enables the provider;
   // this flag admits an optional apikey connection so that stored key is used.

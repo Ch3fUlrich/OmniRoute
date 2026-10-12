@@ -1,0 +1,1 @@
+- **providers:** add a generic Agent Client Protocol (ACP) executor that drives an ACP CLI over stdio for chat completions (streaming and non-streaming, cancel on abort, permissions rejected by default), with the `qoder-acp` provider (`qodercli --acp`) as its first user.
