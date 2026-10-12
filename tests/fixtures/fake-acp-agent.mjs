@@ -168,6 +168,87 @@ async function handlePrompt(id, params) {
     chunk("agent_message_chunk", `envreport|${vars}|argv=${argv}|`);
     return finish("end_turn");
   }
+  if (text.includes("MASKTHOUGHT")) {
+    // Echo the token inside a reasoning chunk.
+    if (!TOKEN) {
+      chunk("agent_thought_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_thought_chunk", `think ${TOKEN} end`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKSPLITKIND")) {
+    // One key split across kinds: the thought chunk carries the head, the message
+    // chunk the tail. Neither half may reach the caller.
+    if (!TOKEN) {
+      chunk("agent_message_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_thought_chunk", `t-head ${TOKEN.slice(0, 9)}`);
+    chunk("agent_message_chunk", `${TOKEN.slice(9)} m-tail`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKTAILHOLD")) {
+    // Text ends with a proper key prefix that never completes: it must be released
+    // intact when the turn ends, not withheld forever or masked.
+    if (!TOKEN) {
+      chunk("agent_message_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_message_chunk", `done ${TOKEN.slice(0, 5)}`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKTWICE")) {
+    if (!TOKEN) {
+      chunk("agent_message_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_message_chunk", `${TOKEN} and ${TOKEN}!`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKTHREEWAY")) {
+    // One key split across three chunks.
+    if (!TOKEN) {
+      chunk("agent_message_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_message_chunk", TOKEN.slice(0, 4));
+    chunk("agent_message_chunk", TOKEN.slice(4, 10));
+    chunk("agent_message_chunk", TOKEN.slice(10));
+    return finish("end_turn");
+  }
+  if (text.includes("MASKOVERLAP")) {
+    // The text before the key shares a prefix with it ("abcabc " against
+    // "abcabcabcXY123"): only the real occurrence may be masked.
+    if (!TOKEN) {
+      chunk("agent_message_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_message_chunk", `abcabc ${TOKEN}!`);
+    return finish("end_turn");
+  }
+  if (text.includes("MASKPENDABORT")) {
+    // A held partial prefix with the turn still open: only the client abort ends it,
+    // so the withheld tail must be flushed to the consumer, not lost.
+    if (!TOKEN) {
+      chunk("agent_thought_chunk", "no-token");
+      return finish("end_turn");
+    }
+    chunk("agent_thought_chunk", `hmm ${TOKEN.slice(0, 6)}`);
+    return;
+  }
+  if (text.includes("MASKERRDATA")) {
+    send({
+      id,
+      error: {
+        code: -32000,
+        message: "rpc failure",
+        data: { detail: `token is ${TOKEN || "none"}` },
+      },
+    });
+    promptId = null;
+    return;
+  }
   if (text.includes("MASKOUT")) {
     // Echo the injected token bare, mid-word, and split across two chunks. A missing
     // token is reported as such so the test can tell an injection failure from a
