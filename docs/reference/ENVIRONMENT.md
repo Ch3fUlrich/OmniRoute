@@ -497,6 +497,12 @@ Controls how OmniRoute discovers and launches CLI sidecars (Claude Code, Codex, 
 | `ZCODE_RPC_TIMEOUT_MS`    | `30000`     | `open-sse/executors/zcode.ts`                       | Per-request RPC timeout (ms) for a ZCode app-server call.                                                                                                                     |
 | `ZCODE_TURN_TIMEOUT_MS`   | `120000`    | `open-sse/executors/zcode.ts`                       | Maximum duration (ms) of one ZCode turn before the supervisor times it out.                                                                                                    |
 | `ZCODE_POLL_INTERVAL_MS`  | `250`       | `open-sse/executors/zcode.ts`                       | Polling interval (ms) for ZCode turn completion.                                                                                                                              |
+| `ACP_CWD` | fresh empty temp dir per turn | `open-sse/executors/acp.ts` | Working directory of the spawned ACP agent and the `session/new` cwd; when set it is used as is and never deleted. |
+| `ACP_PERMISSION_POLICY` | `reject` | `open-sse/executors/acp.ts` | How the generic ACP executor answers agent `session/request_permission` calls: `reject` (default) or `allow`. |
+| `ACP_TURN_TIMEOUT_MS` | `300000` | `open-sse/executors/acp.ts` | Maximum duration (ms) of one ACP `session/prompt` turn before the agent is cancelled and killed. |
+| `ACP_REQUEST_TIMEOUT_MS` | `30000` | `open-sse/executors/acp.ts` | Per-request JSON-RPC timeout (ms) for ACP handshake and session calls. |
+| `ACP_MAX_OUTPUT_BYTES` | `8388608` | `open-sse/executors/acp.ts` | Cap on text collected from one ACP turn; the turn is cancelled past it and ends with `finish_reason: length`. |
+| `ACP_MAX_CONCURRENT` | `4` | `open-sse/executors/acp.ts` | Maximum concurrent ACP agent subprocesses per executor. |
 | `HERMES_HOME`             | `~/.hermes` | `src/lib/cli-helper/config-generator/hermesHome.ts` | Hermes Agent home directory where OmniRoute reads/writes the Hermes CLI config. Matches the env var the Hermes PowerShell installer sets on Windows (`%LOCALAPPDATA%\hermes`). |
 
 ### CLI Profile Auto-Sync
