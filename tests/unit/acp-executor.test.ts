@@ -532,6 +532,203 @@ test("a token in the stderr tail never reaches a stream request", async () => {
   assert.match(text, /\[redacted\]/i);
 });
 
+// ── masking across content and reasoning ──────────────────────────────────────
+
+test("a token echoed inside a reasoning chunk is masked out of reasoning_content", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKTHOUGHT", false));
+  const reasoning: string = json.choices[0].message.reasoning_content ?? "";
+  assert.equal(reasoning.includes(MASK_SECRET), false);
+  assert.equal(reasoning, "think [redacted] end");
+});
+
+test("a token split between a thought chunk and a message chunk never reaches either field in halves", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKSPLITKIND", false));
+  const content: string = json.choices[0].message.content;
+  const reasoning: string = json.choices[0].message.reasoning_content ?? "";
+  assert.equal(content.includes(MASK_SECRET.slice(9)), false, `content leaked a half: ${content}`);
+  assert.equal(reasoning.includes(MASK_SECRET.slice(0, 9)), false, `reasoning leaked a half`);
+  // The key completed across kinds, so it is one masked piece under the first kind.
+  assert.equal(reasoning, "t-head [redacted]");
+  assert.equal(content, " m-tail");
+});
+
+test("a token split across thought and message chunks is masked in every SSE delta", async () => {
+  const response = await runWithTokenEnvKey("MASKSPLITKIND", true);
+  const text = await response.text();
+  assert.equal(text.includes(MASK_SECRET), false, "the whole key never appears in the stream");
+  assert.equal(
+    text.includes(MASK_SECRET.slice(9)),
+    false,
+    "no half of the key is ever released"
+  );
+  const events = sseEvents(text);
+  const reasoning = events
+    .map((e) => e.choices?.[0]?.delta?.reasoning_content)
+    .filter((c) => c)
+    .join("");
+  const content = events
+    .map((e) => e.choices?.[0]?.delta?.content)
+    .filter((c) => c)
+    .join("");
+  assert.equal(reasoning, "t-head [redacted]");
+  assert.equal(content, " m-tail");
+});
+
+test("a held partial prefix that never completes is released intact at the end of the turn", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKTAILHOLD", false));
+  assert.equal(json.choices[0].message.content, `done ${MASK_SECRET.slice(0, 5)}`);
+});
+
+test("a key appearing twice in one chunk is masked in both places", async () => {
+  const json = await completion(await runWithTokenEnvKey("MASKTWICE", false));
+  assert.equal(json.choices[0].message.content, "[redacted] and [redacted]!");
+});
+
+test("a key split across three streamed chunks reassembles into one masked piece", async () => {
+  const response = await runWithTokenEnvKey("MASKTHREEWAY", true);
+  const text = await response.text();
+  assert.equal(text.includes(MASK_SECRET), false);
+  for (const half of [MASK_SECRET.slice(0, 4), MASK_SECRET.slice(4, 10), MASK_SECRET.slice(10)]) {
+    assert.equal(text.includes(half), false, `half ${half} leaked`);
+  }
+  const content = sseEvents(text)
+    .map((e) => e.choices?.[0]?.delta?.content)
+    .filter((c) => c)
+    .join("");
+  assert.equal(content, "[redacted]");
+});
+
+test("text sharing a prefix with the key is not swallowed: only the real occurrence is masked", async () => {
+  const json = await completion(
+    await runWithTokenEnvKey("MASKOVERLAP", false, "abcabcabcXY123")
+  );
+  assert.equal(json.choices[0].message.content, "abcabc [redacted]!");
+});
+
+test("a client abort mid-stream flushes the held tail to the still-open consumer", async () => {
+  const { executor } = await makeExecutor({ turnTimeoutMs: 20_000 });
+  const controller = new AbortController();
+  const response = unwrap(
+    await executor.execute({
+      model: "alpha",
+      body: body("MASKPENDABORT"),
+      stream: true,
+      credentials: { apiKey: MASK_SECRET },
+      signal: controller.signal,
+    })
+  );
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let seen = "";
+  while (!seen.includes("hmm ")) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    seen += decoder.decode(value, { stream: true });
+  }
+  controller.abort();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    seen += decoder.decode(value, { stream: true });
+  }
+  assert.equal(seen.includes(MASK_SECRET), false, "the full key never appears");
+  assert.ok(
+    seen.includes(MASK_SECRET.slice(0, 6)),
+    "the held tail is flushed, not silently lost, when the consumer is still open"
+  );
+});
+
+// ── the injected token value is the effective one ─────────────────────────────
+
+const OVERRIDE_SECRET = "override-key-9988";
+
+test("options.env cannot replace the connection key in the child's token env", async () => {
+  const { executor } = await makeExecutor(
+    {},
+    { FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY", OPENAI_API_KEY: OVERRIDE_SECRET },
+    "qwen-code"
+  );
+  const json = await completion(
+    await executor
+      .execute({
+        model: "alpha",
+        body: body("ENVREPORT"),
+        stream: false,
+        credentials: { apiKey: MASK_SECRET },
+      })
+      .then(unwrap)
+  );
+  const content: string = json.choices[0].message.content;
+  assert.match(
+    content,
+    new RegExp(`OPENAI_API_KEY=set:${hash8(MASK_SECRET)}\\b`),
+    "the connection key wins over the options.env override"
+  );
+  assert.equal(content.includes(hash8(OVERRIDE_SECRET)), false, "the override never lands");
+});
+
+test("an options.env override attempt cannot unmask: the agent can only echo a masked value", async () => {
+  const { executor } = await makeExecutor(
+    {},
+    { FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY", OPENAI_API_KEY: OVERRIDE_SECRET },
+    "qwen-code"
+  );
+  const json = await completion(await run(executor, "MASKOUT", false));
+  const content: string = json.choices[0].message.content;
+  assert.equal(content.includes(MASK_SECRET), false);
+  assert.equal(
+    content.includes(OVERRIDE_SECRET),
+    false,
+    "whatever value the child ends up holding under the token env is masked"
+  );
+});
+
+test("a token env value coming only from options.env is still masked as an injected token", async () => {
+  const { executor } = await makeExecutor(
+    {},
+    { FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY", OPENAI_API_KEY: OVERRIDE_SECRET },
+    "qwen-code"
+  );
+  const json = await completion(await run(executor, "MASKOUT", false));
+  assert.equal(json.choices[0].message.content.includes(OVERRIDE_SECRET), false);
+  assert.match(json.choices[0].message.content, /say \[redacted\] now/);
+});
+
+test("an ACP RPC error's data payload never carries the injected token", async () => {
+  const { AcpClient, AcpRpcError, buildAcpChildEnv } = await import(
+    "../../open-sse/executors/acpProtocol.ts"
+  );
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fixture],
+    env: buildAcpChildEnv(
+      { FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY", OPENAI_API_KEY: MASK_SECRET },
+      [],
+      {}
+    ),
+    secrets: [MASK_SECRET],
+    requestTimeoutMs: 3000,
+  });
+  client.start();
+  try {
+    await client.request("initialize", { protocolVersion: 1, clientCapabilities: {} });
+    await client.request("session/new", { cwd: process.cwd(), mcpServers: [] });
+    const error = await client
+      .request(
+        "session/prompt",
+        { sessionId: "fake-session", prompt: [{ type: "text", text: "MASKERRDATA" }] },
+        0
+      )
+      .then(() => undefined, (err: unknown) => err);
+    assert.ok(error instanceof AcpRpcError, "the prompt must fail with an RPC error");
+    const carried = JSON.stringify((error as AcpRpcError).data) ?? "";
+    assert.equal(carried.includes(MASK_SECRET), false, "err.data must not carry the key");
+    assert.match(carried, /\[redacted\]/);
+  } finally {
+    await client.close();
+  }
+});
+
 // ── the environment and argv given to the child ───────────────────────────────
 
 const GW_OPENAI_SECRET = "gw-secret-0001";
