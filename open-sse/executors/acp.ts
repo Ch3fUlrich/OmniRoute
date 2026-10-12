@@ -194,10 +194,13 @@ class AcpTurn {
   onFirstOutput?: () => void;
 
   private readonly client: AcpClient;
-  /** The literal token values this turn injected into the agent's environment. */
+  /** The token value(s) actually placed in the agent's environment for this turn. */
   private readonly tokenValues: string[];
-  private readonly contentMasker: AcpTextMasker;
-  private readonly reasoningMasker: AcpTextMasker;
+  /**
+   * One masker over the whole turn: a key split between a thought and a message chunk
+   * must complete (and mask) as one piece, never reach the caller in halves.
+   */
+  private readonly turnMasker: AcpTextMasker;
   private sessionId?: string;
   private promptInFlight = false;
   private timedOut = false;
@@ -213,23 +216,22 @@ class AcpTurn {
     private readonly cancelGraceMs: number,
     private readonly requestTimeoutMs: number
   ) {
-    this.tokenValues =
-      agent.tokenEnv && input.credentials?.apiKey ? [String(input.credentials.apiKey)] : [];
-    this.contentMasker = new AcpTextMasker(this.tokenValues);
-    this.reasoningMasker = new AcpTextMasker(this.tokenValues);
+    const injectedEnv: Record<string, string> = { ...(options.env ?? {}) };
+    if (agent.tokenEnv && input.credentials?.apiKey) {
+      // The connection key is applied after options.env, so an option can never
+      // replace what the child authenticates with.
+      injectedEnv[agent.tokenEnv] = String(input.credentials.apiKey);
+    }
+    // Whatever value actually lands in the child under the token env is masked, even
+    // when only options.env put it there.
+    const effectiveToken = agent.tokenEnv ? injectedEnv[agent.tokenEnv] : undefined;
+    this.tokenValues = typeof effectiveToken === "string" && effectiveToken ? [effectiveToken] : [];
+    this.turnMasker = new AcpTextMasker(this.tokenValues);
     this.client = new AcpClient({
       command: options.command ?? process.env[agent.binEnv] ?? agent.command,
       args: options.args ?? agent.args,
       cwd,
-      env: buildAcpChildEnv(
-        {
-          ...(agent.tokenEnv && input.credentials?.apiKey
-            ? { [agent.tokenEnv]: String(input.credentials.apiKey) }
-            : {}),
-          ...options.env,
-        },
-        agent.passEnv
-      ),
+      env: buildAcpChildEnv(injectedEnv, agent.passEnv),
       requestTimeoutMs,
       permissionPolicy:
         options.permissionPolicy ??
@@ -264,36 +266,36 @@ class AcpTurn {
       return;
     }
     const thought = kind === "agent_thought_chunk";
-    // An agent can echo its token back across two chunks, so a piece of the delta is
-    // withheld until it can no longer be part of the token.
-    const text = (thought ? this.reasoningMasker : this.contentMasker).feed(block.text);
+    // One pending buffer over both kinds: a piece of a delta is withheld until it can
+    // no longer be part of the token, wherever the token started.
+    const pieces = this.turnMasker.feed(block.text, thought ? "reasoning" : "content");
     this.sawOutput = true;
     this.onFirstOutput?.();
-    if (!text) return;
-    if (thought) this.reasoning += text;
-    else this.content += text;
-    this.emit?.(thought ? { reasoning_content: text } : { content: text });
+    for (const piece of pieces) this.deliver(piece.kind, piece.text);
   }
 
-  /** Deliver the text the maskers withheld; call once the turn has settled. */
-  finish(): void {
-    const content = this.contentMasker.flush();
-    if (content) {
-      this.content += content;
-      this.sawOutput = true;
-      this.emit?.({ content });
+  /** Route one masked piece to its kind: order and per-kind routing as they arrived. */
+  private deliver(kind: string, text: string): void {
+    if (kind === "reasoning") {
+      this.reasoning += text;
+      this.emit?.({ reasoning_content: text });
+    } else {
+      this.content += text;
+      this.emit?.({ content: text });
     }
-    const reasoning = this.reasoningMasker.flush();
-    if (reasoning) {
-      this.reasoning += reasoning;
+  }
+
+  /** Deliver the text the masker withheld; call once the turn has settled. */
+  finish(): void {
+    for (const piece of this.turnMasker.flush()) {
       this.sawOutput = true;
-      this.emit?.({ reasoning_content: reasoning });
+      this.deliver(piece.kind, piece.text);
     }
   }
 
   /** Mask the token in a whole string (failure text of this turn, log lines). */
   maskText(text: string): string {
-    return this.contentMasker.mask(text);
+    return this.turnMasker.mask(text);
   }
 
   /** Ask the agent to stop the turn; force-kill it if it does not within the grace period. */

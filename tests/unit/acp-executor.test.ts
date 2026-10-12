@@ -556,11 +556,7 @@ test("a token split across thought and message chunks is masked in every SSE del
   const response = await runWithTokenEnvKey("MASKSPLITKIND", true);
   const text = await response.text();
   assert.equal(text.includes(MASK_SECRET), false, "the whole key never appears in the stream");
-  assert.equal(
-    text.includes(MASK_SECRET.slice(9)),
-    false,
-    "no half of the key is ever released"
-  );
+  assert.equal(text.includes(MASK_SECRET.slice(9)), false, "no half of the key is ever released");
   const events = sseEvents(text);
   const reasoning = events
     .map((e) => e.choices?.[0]?.delta?.reasoning_content)
@@ -599,9 +595,7 @@ test("a key split across three streamed chunks reassembles into one masked piece
 });
 
 test("text sharing a prefix with the key is not swallowed: only the real occurrence is masked", async () => {
-  const json = await completion(
-    await runWithTokenEnvKey("MASKOVERLAP", false, "abcabcabcXY123")
-  );
+  const json = await completion(await runWithTokenEnvKey("MASKOVERLAP", false, "abcabcabcXY123"));
   assert.equal(json.choices[0].message.content, "abcabc [redacted]!");
 });
 
@@ -645,7 +639,11 @@ const OVERRIDE_SECRET = "override-key-9988";
 test("options.env cannot replace the connection key in the child's token env", async () => {
   const { executor } = await makeExecutor(
     {},
-    { FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY", OPENAI_API_KEY: OVERRIDE_SECRET },
+    {
+      FAKE_ACP_TOKEN_ENV: "OPENAI_API_KEY",
+      FAKE_ACP_REPORT_VARS: "OPENAI_API_KEY",
+      OPENAI_API_KEY: OVERRIDE_SECRET,
+    },
     "qwen-code"
   );
   const json = await completion(
@@ -695,9 +693,8 @@ test("a token env value coming only from options.env is still masked as an injec
 });
 
 test("an ACP RPC error's data payload never carries the injected token", async () => {
-  const { AcpClient, AcpRpcError, buildAcpChildEnv } = await import(
-    "../../open-sse/executors/acpProtocol.ts"
-  );
+  const { AcpClient, AcpRpcError, buildAcpChildEnv } =
+    await import("../../open-sse/executors/acpProtocol.ts");
   const client = new AcpClient({
     command: process.execPath,
     args: [fixture],
@@ -719,7 +716,10 @@ test("an ACP RPC error's data payload never carries the injected token", async (
         { sessionId: "fake-session", prompt: [{ type: "text", text: "MASKERRDATA" }] },
         0
       )
-      .then(() => undefined, (err: unknown) => err);
+      .then(
+        () => undefined,
+        (err: unknown) => err
+      );
     assert.ok(error instanceof AcpRpcError, "the prompt must fail with an RPC error");
     const carried = JSON.stringify((error as AcpRpcError).data) ?? "";
     assert.equal(carried.includes(MASK_SECRET), false, "err.data must not carry the key");
