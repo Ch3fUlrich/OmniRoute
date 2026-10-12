@@ -68,11 +68,7 @@ function readLog(path: string): LogEntry[] {
     .map((line) => JSON.parse(line));
 }
 
-async function makeExecutor(
-  extra: Opts = {},
-  env: Record<string, string> = {},
-  agentId = "qoder"
-) {
+async function makeExecutor(extra: Opts = {}, env: Record<string, string> = {}, agentId = "qoder") {
   const { AcpExecutor } = await load();
   const s = scratch();
   const executor = new AcpExecutor(agentId, {
@@ -490,7 +486,13 @@ test("a token echoed across streamed chunks is masked in every SSE delta", async
   const deltas = sseEvents(text)
     .map((e) => e.choices?.[0]?.delta?.content)
     .filter((c) => c);
-  assert.deepEqual(deltas, ["say [redacted] now", "abc[redacted]def"]);
+  assert.equal(
+    deltas.some((delta) => delta.includes(MASK_SECRET)),
+    false,
+    "no delta carries the key"
+  );
+  // The key is never emitted in halves either: the withheld tail reassembles it whole.
+  assert.equal(deltas.join(""), "say [redacted] nowabc[redacted]def");
   assert.match(text, /data: \[DONE\]\s*$/);
 });
 
@@ -519,17 +521,15 @@ test("a token appearing in a JSON-RPC error message is masked", async () => {
   const json = await completion(response);
   assert.match(json.error.message, /invalid credential/);
   assert.equal(json.error.message.includes(MASK_SECRET), false);
-  assert.match(json.error.message, /\[redacted\]/);
+  // the generic sanitizer may overwrite the marker with its own [REDACTED]
+  assert.match(json.error.message, /\[redacted\]/i);
 });
 
-test("a token in the streamed error event is masked", async () => {
+test("a token in the stderr tail never reaches a stream request", async () => {
   const response = await runWithTokenEnvKey("MASKSTDERR", true);
   const text = await response.text();
   assert.equal(text.includes(MASK_SECRET), false);
-  assert.equal(
-    sseEvents(text).some((e) => e.error),
-    true
-  );
+  assert.match(text, /\[redacted\]/i);
 });
 
 // ── the environment and argv given to the child ───────────────────────────────
@@ -552,11 +552,7 @@ async function childEnvReport(agentId: string, apiKey: string): Promise<string> 
   process.env.OPENAI_API_KEY = GW_OPENAI_SECRET;
   process.env.QODER_PERSONAL_ACCESS_TOKEN = GW_QODER_SECRET;
   try {
-    const { executor } = await makeExecutor(
-      {},
-      { FAKE_ACP_REPORT_VARS: REPORTED_VARS },
-      agentId
-    );
+    const { executor } = await makeExecutor({}, { FAKE_ACP_REPORT_VARS: REPORTED_VARS }, agentId);
     const response = unwrap(
       await executor.execute({
         model: "alpha",

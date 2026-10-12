@@ -27,6 +27,77 @@ function maskCredentialLikeText(text: string): string {
     .replace(/\b(?:sk|pk|ghp|gho|xox[abps]|AIza)[-_A-Za-z0-9]{12,}/g, "[REDACTED]");
 }
 
+/** What an injected token is replaced with in agent output. */
+export const ACP_REDACTED = "[redacted]";
+
+/** Shorter values are almost certainly ordinary text, not a credential. */
+const MIN_MASKED_VALUE_LENGTH = 8;
+
+function maskExactValues(text: string, values: readonly string[]): string {
+  let out = text;
+  for (const value of values) out = out.split(value).join(ACP_REDACTED);
+  return out;
+}
+
+/**
+ * Masks the literal token values the executor injected into the agent's environment.
+ * The agent's text is untrusted: an agent that prints its own token must not deliver
+ * it. Matching is exact-substring only — no pattern guessing. `feed()` holds back the
+ * longest possible partial match so a value split across two streamed chunks is still
+ * recognized; `flush()` releases what is left once the turn is over.
+ */
+export class AcpTextMasker {
+  private readonly values: string[];
+  private readonly longest: number;
+  private pending = "";
+
+  constructor(values: readonly (string | undefined)[]) {
+    this.values = [...new Set(values.filter(hasLength))].sort((a, b) => b.length - a.length);
+    this.longest = this.values.length ? this.values[0].length : 0;
+  }
+
+  /** Mask a whole string at once (error messages, log lines). */
+  mask(text: string): string {
+    if (!this.values.length) return text;
+    return maskExactValues(text, this.values);
+  }
+
+  /**
+   * Mask one streamed piece. Every match inside the accumulated text is replaced, and
+   * only the suffix that could still grow into a match is withheld, so a value split
+   * across two chunks is masked instead of being emitted in halves.
+   */
+  feed(text: string): string {
+    if (!this.values.length) return text;
+    this.pending = this.mask(this.pending + text);
+    const hold = this.withholdable();
+    const emit = this.pending.slice(0, this.pending.length - hold);
+    this.pending = hold ? this.pending.slice(this.pending.length - hold) : "";
+    return emit;
+  }
+
+  /** Mask and release whatever is still withheld. */
+  flush(): string {
+    const tail = this.pending;
+    this.pending = "";
+    return this.mask(tail);
+  }
+
+  /** Length of the longest suffix of `pending` that is a proper prefix of a value. */
+  private withholdable(): number {
+    const max = Math.min(this.pending.length, this.longest - 1);
+    for (let length = max; length > 0; length -= 1) {
+      const tail = this.pending.slice(-length);
+      if (this.values.some((value) => value.startsWith(tail))) return length;
+    }
+    return 0;
+  }
+}
+
+function hasLength(value: string | undefined): value is string {
+  return typeof value === "string" && value.length >= MIN_MASKED_VALUE_LENGTH;
+}
+
 /**
  * Environment variables a spawned agent inherits from the gateway. Everything else
  * (session secrets, provider keys, database settings) stays out of the child, which
@@ -104,6 +175,8 @@ export interface AcpClientOptions {
   /** Default timeout for one request, ms. A request may override it; 0 disables it. */
   requestTimeoutMs?: number;
   permissionPolicy?: AcpPermissionPolicy;
+  /** Exact values (the token injected into the agent env) masked wherever the agent repeats them. */
+  secrets?: readonly (string | undefined)[];
   onUpdate?: (update: AcpSessionUpdate) => void;
 }
 
@@ -142,12 +215,14 @@ export class AcpClient {
   // Multi-byte characters can straddle two chunks; a decoder per stream keeps them whole.
   private readonly stdoutDecoder = new StringDecoder("utf8");
   private readonly stderrDecoder = new StringDecoder("utf8");
+  private readonly secretMasker: AcpTextMasker;
   private exitInfo?: string;
   private spawnError?: Error;
   private exitPromise?: Promise<void>;
 
   constructor(options: AcpClientOptions) {
     this.options = options;
+    this.secretMasker = new AcpTextMasker(options.secrets ?? []);
   }
 
   get pid(): number | undefined {
@@ -158,9 +233,12 @@ export class AcpClient {
     return this.exitInfo !== undefined;
   }
 
-  /** Last bytes the agent wrote to stderr (unscrubbed; callers sanitize before surfacing). */
+  /**
+   * Last bytes the agent wrote to stderr, with the injected token masked out. Still
+   * unscrubbed for anything else it may print: callers sanitize before surfacing.
+   */
   get stderr(): string {
-    return this.stderrTail.trim();
+    return this.secretMasker.mask(this.stderrTail).trim();
   }
 
   start(): void {
@@ -251,7 +329,9 @@ export class AcpClient {
       entry.reject(
         new AcpRpcError(
           typeof err.code === "number" ? err.code : -32603,
-          typeof err.message === "string" ? err.message : "ACP agent returned an error",
+          typeof err.message === "string"
+            ? this.secretMasker.mask(err.message)
+            : "ACP agent returned an error",
           err.data
         )
       );

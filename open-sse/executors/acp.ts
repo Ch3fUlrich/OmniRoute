@@ -7,6 +7,7 @@ import { getAcpAgent, type AcpAgentSpec } from "./acpAgents.ts";
 import {
   AcpClient,
   AcpRpcError,
+  AcpTextMasker,
   buildAcpChildEnv,
   type AcpPermissionPolicy,
   type AcpSessionUpdate,
@@ -157,7 +158,16 @@ function failureStatus(error: unknown): number {
   return 502;
 }
 
-function failureMessage(error: unknown, agent: AcpAgentSpec): string {
+function failureMessage(
+  error: unknown,
+  agent: AcpAgentSpec,
+  mask?: (text: string) => string
+): string {
+  const message = describeFailure(error, agent);
+  return mask ? mask(message) : message;
+}
+
+function describeFailure(error: unknown, agent: AcpAgentSpec): string {
   if (error instanceof Error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "EACCES") {
@@ -184,6 +194,10 @@ class AcpTurn {
   onFirstOutput?: () => void;
 
   private readonly client: AcpClient;
+  /** The literal token values this turn injected into the agent's environment. */
+  private readonly tokenValues: string[];
+  private readonly contentMasker: AcpTextMasker;
+  private readonly reasoningMasker: AcpTextMasker;
   private sessionId?: string;
   private promptInFlight = false;
   private timedOut = false;
@@ -199,6 +213,10 @@ class AcpTurn {
     private readonly cancelGraceMs: number,
     private readonly requestTimeoutMs: number
   ) {
+    this.tokenValues =
+      agent.tokenEnv && input.credentials?.apiKey ? [String(input.credentials.apiKey)] : [];
+    this.contentMasker = new AcpTextMasker(this.tokenValues);
+    this.reasoningMasker = new AcpTextMasker(this.tokenValues);
     this.client = new AcpClient({
       command: options.command ?? process.env[agent.binEnv] ?? agent.command,
       args: options.args ?? agent.args,
@@ -216,6 +234,7 @@ class AcpTurn {
       permissionPolicy:
         options.permissionPolicy ??
         (process.env.ACP_PERMISSION_POLICY === "allow" ? "allow" : "reject"),
+      secrets: this.tokenValues,
       onUpdate: (update) => this.onUpdate(update),
     });
     input.signal?.addEventListener("abort", this.onAbort, { once: true });
@@ -245,11 +264,36 @@ class AcpTurn {
       return;
     }
     const thought = kind === "agent_thought_chunk";
-    if (thought) this.reasoning += block.text;
-    else this.content += block.text;
+    // An agent can echo its token back across two chunks, so a piece of the delta is
+    // withheld until it can no longer be part of the token.
+    const text = (thought ? this.reasoningMasker : this.contentMasker).feed(block.text);
     this.sawOutput = true;
-    this.emit?.(thought ? { reasoning_content: block.text } : { content: block.text });
     this.onFirstOutput?.();
+    if (!text) return;
+    if (thought) this.reasoning += text;
+    else this.content += text;
+    this.emit?.(thought ? { reasoning_content: text } : { content: text });
+  }
+
+  /** Deliver the text the maskers withheld; call once the turn has settled. */
+  finish(): void {
+    const content = this.contentMasker.flush();
+    if (content) {
+      this.content += content;
+      this.sawOutput = true;
+      this.emit?.({ content });
+    }
+    const reasoning = this.reasoningMasker.flush();
+    if (reasoning) {
+      this.reasoning += reasoning;
+      this.sawOutput = true;
+      this.emit?.({ reasoning_content: reasoning });
+    }
+  }
+
+  /** Mask the token in a whole string (failure text of this turn, log lines). */
+  maskText(text: string): string {
+    return this.contentMasker.mask(text);
   }
 
   /** Ask the agent to stop the turn; force-kill it if it does not within the grace period. */
@@ -469,7 +513,7 @@ export class AcpExecutor extends BaseExecutor {
 
     const fail = async (error: unknown, model: string): Promise<ExecutorExecuteResult> => {
       const status = failureStatus(error);
-      const message = failureMessage(error, agent);
+      const message = failureMessage(error, agent, (text) => turn.maskText(text));
       await turn.dispose();
       if (turn.aborted || input.signal?.aborted) throw abortError();
       input.log?.warn?.("ACP", `${agent.id}: ${message}`);
@@ -493,6 +537,7 @@ export class AcpExecutor extends BaseExecutor {
 
     if (!input.stream) {
       const settled = await turn.prompt(prompt, turnTimeoutMs);
+      turn.finish();
       const judged = turn.judge(settled);
       if ("error" in judged) return fail(judged.error, model);
       await turn.dispose();
@@ -597,11 +642,17 @@ export class AcpExecutor extends BaseExecutor {
 
     void settledPromise
       .then(async (outcome) => {
+        turn.finish();
         const judged = turn.judge(outcome);
         if (turn.aborted || input.signal?.aborted) {
           closeStream();
         } else if ("error" in judged) {
-          write(buildErrorBody(failureStatus(judged.error), failureMessage(judged.error, agent)));
+          write(
+            buildErrorBody(
+              failureStatus(judged.error),
+              failureMessage(judged.error, agent, (text) => turn.maskText(text))
+            )
+          );
           write("[DONE]");
           closeStream();
         } else {
