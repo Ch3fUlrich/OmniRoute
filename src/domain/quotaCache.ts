@@ -42,7 +42,8 @@ import { getAntigravityQuotaFamily } from "@omniroute/open-sse/services/antigrav
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface QuotaInfo {
-  remainingPercentage: number;
+  // null = unknown (the window carries no valid `total`, e.g. Vertex self-tracked spend).
+  remainingPercentage: number | null;
   resetAt: string | null;
   // #10095 — upstream explicitly told us it did NOT report this window's
   // fraction (e.g. a fresh Antigravity account or a newly-launched
@@ -64,8 +65,8 @@ interface QuotaCacheEntry {
 }
 
 interface QuotaWindowStatus {
-  remainingPercentage: number;
-  usedPercentage: number;
+  remainingPercentage: number | null;
+  usedPercentage: number | null;
   resetAt: string | null;
   reachedThreshold: boolean;
 }
@@ -123,7 +124,15 @@ function isExhausted(quotas: Record<string, QuotaInfo>): boolean {
   // #10095 — a window whose fraction was never reported by upstream must
   // never single-handedly flip the whole connection to exhausted; treat it
   // as available (mirrors the guard in genericQuotaFetcher.ts).
-  return entries.every((q) => q.fractionReported !== false && q.remainingPercentage <= 0);
+  // A window without a valid total (remainingPercentage null) is unknown: it is ignored
+  // here, never read as 0%. The connection is exhausted iff at least one window has a
+  // total and EVERY window that has one is exhausted.
+  if (!entries.some((q) => q.remainingPercentage != null)) return false;
+  return entries.every(
+    (q) =>
+      q.remainingPercentage == null ||
+      (q.fractionReported !== false && q.remainingPercentage <= 0)
+  );
 }
 
 /**
@@ -222,11 +231,11 @@ function earliestResetAt(quotas: Record<string, QuotaInfo>): string | null {
  */
 export function quotaSnapshotChanged(
   prior:
-    | { quotas?: Record<string, { remainingPercentage: number }>; exhausted?: boolean }
+    | { quotas?: Record<string, { remainingPercentage: number | null }>; exhausted?: boolean }
     | null
     | undefined,
   windowKey: string,
-  remainingPercentage: number,
+  remainingPercentage: number | null,
   exhausted: boolean
 ): boolean {
   if (!prior) return true;
@@ -245,7 +254,7 @@ function normalizeQuotas(rawQuotas: Record<string, any>): Record<string, QuotaIn
       result[key] = {
         remainingPercentage:
           safePercentage(q.remainingPercentage) ??
-          (q.total > 0 ? Math.round(((q.total - (q.used || 0)) / q.total) * 100) : 0),
+          (q.total > 0 ? Math.round(((q.total - (q.used || 0)) / q.total) * 100) : null),
         resetAt: q.resetAt || null,
         // #10095 — thread through the "did upstream actually report this
         // window's fraction" signal (see UsageQuota in usage/quota.ts).
@@ -484,7 +493,7 @@ export function setQuotaCache(
         safePercentage(quotaInfo.remainingPercentage) ??
         (quotaInfo.total > 0
           ? Math.round(((quotaInfo.total - (quotaInfo.used || 0)) / quotaInfo.total) * 100)
-          : 0);
+          : null);
       recordProviderQuotaResetEventIfChanged({
         provider,
         connectionId,
@@ -502,7 +511,7 @@ export function setQuotaCache(
       // percentage, not the connection-wide AND-across-all-windows aggregate
       // (`entry.exhausted`). A connection with one 0% window and other non-zero
       // windows previously never flagged that window's row as exhausted.
-      const windowExhausted = remainingPercentage <= 0;
+      const windowExhausted = remainingPercentage != null && remainingPercentage <= 0;
       // #4438 — only persist on the first observation or a real change.
       if (!quotaSnapshotChanged(prior, windowKey, remainingPercentage, windowExhausted)) continue;
       try {
@@ -559,10 +568,10 @@ function hydrateQuotaCacheFromSnapshots(connectionId: string): QuotaCacheEntry |
     const windowKey = camelSnapshot.windowKey ?? snapshot.window_key;
     if (!windowKey) continue;
     provider = provider || snapshot.provider || "";
+    const savedRemaining = camelSnapshot.remainingPercentage ?? snapshot.remaining_percentage;
     quotas[windowKey] = {
-      remainingPercentage: clampPercent(
-        Number(camelSnapshot.remainingPercentage ?? snapshot.remaining_percentage ?? 0)
-      ),
+      // A saved null stays null (unknown) instead of re-arming a 0% lockout on restart.
+      remainingPercentage: savedRemaining == null ? null : clampPercent(Number(savedRemaining)),
       resetAt: camelSnapshot.nextResetAt ?? snapshot.next_reset_at ?? null,
     };
     const snapshotWindowDurationMs =
@@ -636,8 +645,9 @@ export function getQuotaWindowStatus(
   const window = resolveQuotaWindow(entry.quotas, windowName);
   if (!window) return null;
 
-  const remainingPercentage = clampPercent(window.remainingPercentage);
-  const usedPercentage = clampPercent(100 - remainingPercentage);
+  const remainingPercentage =
+    window.remainingPercentage == null ? null : clampPercent(window.remainingPercentage);
+  const usedPercentage = remainingPercentage == null ? null : clampPercent(100 - remainingPercentage);
 
   let resetAt = window.resetAt || null;
   let windowExpired = false;
@@ -657,11 +667,11 @@ export function getQuotaWindowStatus(
     // #10095 — a window whose fraction upstream never reported is "unknown",
     // not "0% remaining"; never let it reach the exhaustion threshold.
     reachedThreshold:
-      windowExpired || window.fractionReported === false
+      windowExpired || window.fractionReported === false || remainingPercentage == null
         ? false
         : remainingPercentage <= 0
           ? true
-          : usedPercentage >= thresholdPercent,
+          : (usedPercentage ?? 0) >= thresholdPercent,
   };
 }
 
