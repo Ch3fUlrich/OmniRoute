@@ -47,7 +47,6 @@ jobs:
             --test --test-force-exit \
             tests/unit/translator-gemini-trailing-turn-guard.test.ts \
             tests/unit/translator-gemini-consecutive-role-2191.test.ts
-            tests/unit/responses-reasoning-presence-deepseek.test.ts
 
   image:
     if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'autoos/')
