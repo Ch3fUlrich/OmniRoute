@@ -1,0 +1,20 @@
+# AutoOS layer over the image built from the upstream Dockerfile (target runner-base).
+# Adds exactly two things; both are pinned and fetched by npm at build time:
+#  - qodercli: the Qoder PAT login in the dashboard spawns `qodercli`; upstream ships none
+#    (without it the login fails with `spawn qodercli ENOENT`). npm >= 12 blocks install
+#    scripts by default, so nothing from the package runs at build.
+#  - bcryptjs: the reset-password CLI (`node bin/reset-password.mjs --password-stdin`) needs
+#    it, but the standalone build prunes it from /app/node_modules. Installed into a
+#    throw-away prefix and moved, because npm in /app would reconcile the whole package.json.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG QODERCLI_VERSION=1.1.63
+ARG BCRYPTJS_VERSION=3.0.3
+USER root
+RUN npm install -g "@qoder-ai/qodercli@${QODERCLI_VERSION}" && npm cache clean --force
+RUN npm install --prefix /tmp/autoos-cli-deps --ignore-scripts --no-audit --no-fund "bcryptjs@${BCRYPTJS_VERSION}" \
+  && rm -rf /app/node_modules/bcryptjs \
+  && mv /tmp/autoos-cli-deps/node_modules/bcryptjs /app/node_modules/bcryptjs \
+  && rm -rf /tmp/autoos-cli-deps \
+  && npm cache clean --force
+USER node
