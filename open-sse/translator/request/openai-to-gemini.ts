@@ -42,9 +42,15 @@ import {
   type GeminiPart,
   type GeminiContent,
   mergeConsecutiveSameRoleContents,
+  guardGeminiTrailingTurn,
 } from "./openai-to-gemini/helpers.ts";
 
-export { mergeConsecutiveSameRoleContents, type GeminiContent, type GeminiPart };
+export {
+  mergeConsecutiveSameRoleContents,
+  guardGeminiTrailingTurn,
+  type GeminiContent,
+  type GeminiPart,
+};
 
 // Observed Antigravity wrapper output cap, not an underlying model capability.
 // Keep this bridge-local: Antigravity currently caps visible output around 16K.
@@ -566,7 +572,9 @@ function openaiToGeminiBase(
   }
 
   // Collapse any consecutive same-role contents Gemini would reject (9router#2191).
-  result.contents = mergeConsecutiveSameRoleContents(result.contents ?? []);
+  result.contents = guardGeminiTrailingTurn(
+    mergeConsecutiveSameRoleContents(result.contents ?? [])
+  );
 
   // Convert tools
   const bodyTools = body.tools as Array<Record<string, unknown>> | undefined;

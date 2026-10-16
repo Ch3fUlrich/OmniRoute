@@ -16,6 +16,7 @@ import {
   buildChangedToolNameMap,
   buildHistoricalToolResultContext,
   mergeConsecutiveSameRoleContents,
+  guardGeminiTrailingTurn,
   type GeminiContent,
 } from "./openai-to-gemini/helpers.ts";
 
@@ -319,7 +320,8 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   // Gemini strictly rejects requests containing consecutive messages with the same role
   // (400 INVALID_ARGUMENT: "Request contains consecutive messages with the same role").
   // Normalize adjacent same-role messages by concatenating their parts.
-  result.contents = mergeConsecutiveSameRoleContents(result.contents);
+  // Then fix the Vertex turn-shape rejections (mixed functionResponse turn, model tail).
+  result.contents = guardGeminiTrailingTurn(mergeConsecutiveSameRoleContents(result.contents));
 
   return result;
 }
