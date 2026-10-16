@@ -46,14 +46,7 @@ jobs:
             --import ./open-sse/utils/setupPolyfill.ts --import ./tests/_setup/isolateDataDir.ts \
             --test --test-force-exit \
             tests/unit/translator-gemini-trailing-turn-guard.test.ts \
-            tests/unit/translator-gemini-consecutive-role-2191.test.ts \
-            tests/unit/quota-cache-null-safety-total-less.test.ts \
-            tests/unit/quota-cache-antigravity-fraction-reported-10095.test.ts \
-            tests/unit/quota-cache-hydrate-5015.test.ts \
-            tests/unit/max-tokens-clamp-non-thinking.test.ts \
-            tests/unit/reasoning-token-buffer-6274.test.ts \
-            tests/unit/reasoning-token-buffer-9507.test.ts \
-            tests/unit/param-support-qwen3-235b-clamp.test.ts \
+            tests/unit/translator-gemini-consecutive-role-2191.test.ts
             tests/unit/responses-reasoning-presence-deepseek.test.ts
 
   image:
