@@ -64,7 +64,7 @@ RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-apt-cache,targe
 # --install-strategy=nested makes each replacement self-contained, so it cannot
 # perturb the versions the rest of npm's flat tree resolves.
 RUN set -eux; \
-  npm install -g npm@latest; \
+  npm install -g npm@12.0.2; \
   npm install --prefix /tmp/npm-cve-patch --no-audit --no-fund --ignore-scripts \
     --install-strategy=nested \
     brace-expansion@5.0.12 ip-address@10.7.3 postcss-selector-parser@7.1.6 tar@7.5.22 undici@6.29.0; \
