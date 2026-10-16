@@ -5,6 +5,7 @@
  */
 import { isOpenAIResponsesStoreEnabled } from "@/lib/providers/requestDefaults";
 import {
+  NON_ANTHROPIC_THINKING_PLACEHOLDER,
   isInternalReasoningPlaceholder,
   requiresReasoningContentPresence,
 } from "../../../utils/reasoningPlaceholder.ts";
@@ -124,6 +125,28 @@ function buildResponsesTextParts(content: unknown): unknown[] {
     return parts.length > 0 ? parts : [{ type: "input_text", text: "" }];
   }
   return [{ type: "input_text", text: "" }];
+}
+
+// DeepSeek and Xiaomi MiMo thinking mode reject a Responses `input[]` where an
+// assistant tool-call turn arrives without a preceding `reasoning` item
+// ("The reasoning_text in the thinking mode must be passed back to the API").
+// On a reasoning-cache miss the replay layer only injects
+// NON_ANTHROPIC_THINKING_PLACEHOLDER for some of them, and the real-reasoning
+// branch below skips internal placeholders — so the placeholder has to be
+// re-emitted here as request scaffolding before the tool-call items.
+function responsesProviderRequiresReasoningPresence(provider: unknown, model: unknown): boolean {
+  const normalizedProvider = String(provider ?? "")
+    .trim()
+    .toLowerCase();
+  const normalizedModel = String(model ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    normalizedProvider === "xiaomi-mimo" ||
+    /(^|\/)mimo/i.test(normalizedModel) ||
+    normalizedProvider === "deepseek" ||
+    /(^|\/)deepseek/i.test(normalizedModel)
+  );
 }
 
 export function openaiToOpenAIResponsesRequest(
@@ -249,7 +272,8 @@ export function openaiToOpenAIResponsesRequest(
     // Convert assistant messages
     if (role === "assistant") {
       const reasoning = getReadableReasoningValue(msg).trim();
-      if (reasoning && !isInternalReasoningPlaceholder(reasoning)) {
+      const reasoningIsPlaceholder = isInternalReasoningPlaceholder(reasoning);
+      if (reasoning && !reasoningIsPlaceholder) {
         // Compatibility is decided before protocol translation; this adapter
         // only encodes the surviving portable plaintext state.
         input.push({
@@ -281,6 +305,25 @@ export function openaiToOpenAIResponsesRequest(
         input.push({
           type: "reasoning",
           content: [{ type: "reasoning_text", text: reasoning }],
+          summary: [],
+        });
+      } else if (
+        (reasoningIsPlaceholder || !reasoning) &&
+        responsesProviderRequiresReasoningPresence(credentialRecord._provider, model) &&
+        Array.isArray(msg.tool_calls) &&
+        msg.tool_calls.length > 0
+      ) {
+        // Thinking-mode DeepSeek/MiMo reject a tool-call turn that carries no
+        // `reasoning` item (400 "The reasoning_text in the thinking mode must
+        // be passed back to the API"). This happens on a reasoning-cache miss:
+        // the replay layer supplies only the internal placeholder (or nothing),
+        // and internal placeholders never reach the real-reasoning push above.
+        // Re-emit the placeholder as scaffolding so the function_call items
+        // below are preceded by a reasoning item; it is stripped from anything
+        // client-facing before emission.
+        input.push({
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: NON_ANTHROPIC_THINKING_PLACEHOLDER }],
           summary: [],
         });
       }
