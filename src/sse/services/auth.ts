@@ -310,7 +310,7 @@ interface QuotaCacheView {
   quotas?: Record<
     string,
     {
-      remainingPercentage?: number;
+      remainingPercentage?: number | null;
       resetAt?: string | null;
     }
   >;
@@ -483,7 +483,7 @@ export function evaluateQuotaLimitPolicy(
       policy.thresholdPercent
     );
     if (!status?.reachedThreshold) continue;
-    reasons.push(`${effectiveWindowName} usage ${Math.round(status.usedPercentage)}%`);
+    reasons.push(`${effectiveWindowName} usage ${Math.round(status.usedPercentage ?? 0)}%`);
     resetCandidates.push(status.resetAt);
   }
 
@@ -522,7 +522,8 @@ function isRetryableModelLockoutReason(reason: unknown): boolean {
     ? !NON_RETRYABLE_MODEL_LOCKOUT_REASONS.has(reason)
     : false;
 }
-function pushClampedPercentage(percentages: number[], value: number): void {
+function pushClampedPercentage(percentages: number[], value: number | null): void {
+  if (value === null || value === undefined) return;
   if (Number.isFinite(value)) {
     percentages.push(Math.max(0, Math.min(100, value)));
   }

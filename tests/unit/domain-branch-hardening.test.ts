@@ -351,21 +351,22 @@ test("quotaCache covers empty quotas, invalid dates and fallback percentage norm
     "###": { remainingPercentage: 50 },
   });
   assert.deepEqual(quotaCache.getQuotaWindowStatus("quota-zero-total", "daily", 10), {
-    remainingPercentage: 0,
-    usedPercentage: 100,
+    remainingPercentage: null,
+    usedPercentage: null,
     resetAt: null,
-    reachedThreshold: true,
+    reachedThreshold: false,
   });
+  assert.equal(quotaCache.isAccountQuotaExhausted("quota-zero-total"), false);
   assert.equal(quotaCache.getQuotaWindowStatus("quota-zero-total", "unknown"), null);
 
   quotaCache.setQuotaCache("quota-invalid-reset", "cursor", {
     daily: { remainingPercentage: Number.POSITIVE_INFINITY, resetAt: "not-a-date" },
   });
   assert.deepEqual(quotaCache.getQuotaWindowStatus("quota-invalid-reset", "daily", 10), {
-    remainingPercentage: 0,
-    usedPercentage: 100,
+    remainingPercentage: null,
+    usedPercentage: null,
     resetAt: "not-a-date",
-    reachedThreshold: true,
+    reachedThreshold: false,
   });
 
   quotaCache.setQuotaCache("quota-invalid-exhausted", "cursor", {

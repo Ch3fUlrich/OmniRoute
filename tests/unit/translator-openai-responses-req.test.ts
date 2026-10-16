@@ -516,7 +516,14 @@ test("Chat -> DeepSeek Responses accepts the plaintext reasoning alias", () => {
   });
 });
 
-test("Chat -> Responses never promotes OmniRoute's internal reasoning placeholder", () => {
+// A reasoning-cache miss leaves the assistant tool-call turn carrying only
+// OmniRoute's internal placeholder (the replay layer injects it, and the
+// real-reasoning branch above skips internal placeholders). DeepSeek/MiMo
+// thinking mode rejects that shape with 400 "The reasoning_text in the thinking
+// mode must be passed back to the API", so for those providers the placeholder
+// is re-emitted as request scaffolding — it is stripped again from anything
+// client-facing on the way back.
+test("Chat -> DeepSeek Responses re-emits the internal reasoning placeholder as scaffolding", () => {
   const result = openaiToOpenAIResponsesRequest(
     "deepseek-v4-pro",
     {
@@ -536,6 +543,41 @@ test("Chat -> Responses never promotes OmniRoute's internal reasoning placeholde
     },
     false,
     { _provider: "deepseek" }
+  ) as { input: Array<Record<string, unknown>> };
+
+  assert.deepEqual(
+    result.input.find((item) => item.type === "reasoning"),
+    {
+      type: "reasoning",
+      content: [{ type: "reasoning_text", text: "(prior reasoning summary unavailable)" }],
+      summary: [],
+    }
+  );
+});
+
+// Scope guard for the same rule: providers that do NOT enforce reasoning
+// presence must not gain a placeholder item — that would leak internal
+// scaffolding into ordinary OpenAI traffic.
+test("Chat -> Responses never promotes OmniRoute's internal reasoning placeholder for other providers", () => {
+  const result = openaiToOpenAIResponsesRequest(
+    "gpt-5",
+    {
+      messages: [
+        {
+          role: "assistant",
+          reasoning_content: "(prior reasoning summary unavailable)",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: { name: "search", arguments: "{}" },
+            },
+          ],
+        },
+      ],
+    },
+    false,
+    { _provider: "openai" }
   ) as { input: Array<Record<string, unknown>> };
 
   assert.equal(
