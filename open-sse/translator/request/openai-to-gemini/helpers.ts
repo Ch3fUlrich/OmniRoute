@@ -272,3 +272,39 @@ export function sanitizeGeminiPartFunctionResponse(part: GeminiPart): GeminiPart
     },
   };
 }
+// Vertex AI refuses `contents[]` that ends on a `model` turn, and reports the same
+// 400 "Requests ending with a model turn are not supported" for a signed tool call whose
+// last `user` turn MIXES a `functionResponse` part with other parts (text notice).
+// Run after mergeConsecutiveSameRoleContents:
+//  1. split every mixed user turn into user[functionResponse parts] / model["Noted."] /
+//     user[other parts] — the synthetic model turn keeps the alternation valid, so the
+//     gateway's own same-role merge would not re-fuse the pieces;
+//  2. pop any trailing model turns;
+//  3. refill an emptied array with one synthetic user turn.
+// Tolerant of malformed bodies: non-array input is treated as empty, null / non-object
+// entries and roles other than user/model are dropped, `parts` is read only when an array.
+export function guardGeminiTrailingTurn(contents: unknown): GeminiContent[] {
+  const out: GeminiContent[] = [];
+  for (const entry of Array.isArray(contents) ? contents : []) {
+    if (!entry || typeof entry !== "object") continue;
+    const c = entry as GeminiContent;
+    if (c.role !== "user" && c.role !== "model") continue;
+    if (c.role === "model") {
+      out.push(c);
+      continue;
+    }
+    const parts: GeminiPart[] = Array.isArray(c.parts) ? c.parts : [];
+    const responses = parts.filter((p) => p && p.functionResponse);
+    const others = parts.filter((p) => !p || !p.functionResponse);
+    if (responses.length && others.length) {
+      out.push({ ...c, parts: responses });
+      out.push({ role: "model", parts: [{ text: "Noted." }] });
+      out.push({ ...c, parts: others });
+    } else {
+      out.push(c);
+    }
+  }
+  while (out.length && out[out.length - 1].role === "model") out.pop();
+  if (!out.length) out.push({ role: "user", parts: [{ text: "Continue." }] });
+  return out;
+}

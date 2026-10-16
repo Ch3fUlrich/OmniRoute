@@ -29,6 +29,7 @@ import {
   mergeConsecutiveSameRoleContents,
   ensureHistoryDoesNotOpenWithFunctionCall,
   sanitizeFunctionResponseData,
+  guardGeminiTrailingTurn,
   type GeminiContent,
 } from "./openai-to-gemini/helpers.ts";
 
@@ -517,6 +518,8 @@ export function claudeToGeminiRequest(model, body, stream, credentials = null) {
   if (isGeminiTrailingModelTurnRejectingModel(model)) {
     result.contents = stripTrailingGeminiModelTurns(result.contents);
   }
+  // Then fix the Vertex turn-shape rejections (mixed functionResponse turn, model tail).
+  result.contents = guardGeminiTrailingTurn(result.contents);
 
   return result;
 }

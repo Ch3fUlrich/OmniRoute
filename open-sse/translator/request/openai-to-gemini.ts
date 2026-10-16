@@ -56,11 +56,13 @@ import {
   mergeConsecutiveSameRoleContents,
   ensureHistoryDoesNotOpenWithFunctionCall,
   sanitizeFunctionResponseData,
+  guardGeminiTrailingTurn,
 } from "./openai-to-gemini/helpers.ts";
 
 export {
   mergeConsecutiveSameRoleContents,
   ensureHistoryDoesNotOpenWithFunctionCall,
+  guardGeminiTrailingTurn,
   type GeminiContent,
   type GeminiPart,
 };
@@ -702,6 +704,8 @@ function openaiToGeminiBase(
   if (isGeminiTrailingModelTurnRejectingModel(model)) {
     result.contents = stripTrailingGeminiModelTurns(result.contents);
   }
+  // Vertex turn-shape rejections (mixed functionResponse turn, model tail, empty refill).
+  result.contents = guardGeminiTrailingTurn(result.contents);
   // Signatures must be resolved using client IDs before assigning unique wire IDs (#15312).
   result.contents = normalizeGeminiToolCallIds(result.contents);
 
