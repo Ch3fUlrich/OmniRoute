@@ -96,9 +96,9 @@ function responsesProviderRequiresReasoningPresence(provider: unknown, model: un
     .toLowerCase();
   return (
     normalizedProvider === "xiaomi-mimo" ||
-    /(^|\/)mimo/i.test(normalizedModel) ||
+    /(^|\/)mimo([-/._]|$)/i.test(normalizedModel) ||
     normalizedProvider === "deepseek" ||
-    /(^|\/)deepseek/i.test(normalizedModel)
+    /(^|\/)deepseek([-/._]|$)/i.test(normalizedModel)
   );
 }
 
@@ -237,7 +237,9 @@ export function openaiToOpenAIResponsesRequest(
           summary: [],
         });
       } else if (
-        (reasoningIsPlaceholder || !reasoning) &&
+        // Reaching this arm already means "no real reasoning" (empty or internal placeholder).
+        // DeepSeek is included on purpose: the Responses-API path 400s with "reasoning_text ...
+        // must be passed back" (observed live); upstream #9573 only concerns the chat path.
         responsesProviderRequiresReasoningPresence(credentialRecord._provider, model) &&
         Array.isArray(msg.tool_calls) &&
         msg.tool_calls.length > 0

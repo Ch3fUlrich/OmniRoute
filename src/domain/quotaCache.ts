@@ -126,11 +126,12 @@ function isExhausted(quotas: Record<string, QuotaInfo>): boolean {
   // #10095 — a window whose fraction was never reported by upstream must
   // never single-handedly flip the whole connection to exhausted; treat it
   // as available (mirrors the guard in genericQuotaFetcher.ts).
-  const withTotal = entries.filter((q) => q.remainingPercentage !== null);
-  if (withTotal.length === 0) return false;
-  return withTotal.every(
-    (q) => q.fractionReported !== false && (q.remainingPercentage as number) <= 0
+  // Judge note: a real 0% window next to an unknown one stays exhausted (AutoOS spec case H1).
+  const withTotal = entries.filter(
+    (q): q is QuotaInfo & { remainingPercentage: number } => q.remainingPercentage != null
   );
+  if (withTotal.length === 0) return false;
+  return withTotal.every((q) => q.fractionReported !== false && q.remainingPercentage <= 0);
 }
 
 /**
@@ -648,7 +649,7 @@ export function getQuotaWindowStatus(
   if (!window) return null;
 
   const remainingPercentage =
-    window.remainingPercentage === null || window.remainingPercentage === undefined
+    window.remainingPercentage == null
       ? null
       : clampPercent(window.remainingPercentage);
   const usedPercentage =
