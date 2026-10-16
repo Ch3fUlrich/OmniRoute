@@ -34,9 +34,8 @@ export function resolveReasoningBufferedMaxTokens(
   const current = toPositiveInteger(currentMaxTokens);
   if (current === null) return null;
 
-  const capabilities = getResolvedModelCapabilities(modelStr);
-  if (capabilities.supportsThinking !== true) return null;
-
+  // AutoOS: no supportsThinking gate — a model's explicit output cap clamps
+  // max_tokens for every model. A model with no explicit cap is still untouched.
   const maxOutputTokens = toPositiveInteger(getExplicitModelOutputCap(modelStr));
   if (maxOutputTokens === null) return null;
   if (current > maxOutputTokens) return maxOutputTokens;
