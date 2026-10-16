@@ -93,6 +93,17 @@ const STRIP_RULES: StripRule[] = [
   // to read), hence the fixed cap.
   { provider: "azure-openai", match: /^gpt-4o-mini/i, maxOutputCap: 16384 },
   { provider: "azure-ai", match: /^gpt-4o-mini/i, maxOutputCap: 16384 },
+  // Scaleway rejects anything above 16384 output tokens for this exact model id:
+  // HTTP 400 "max_completion_tokens is limited to 16384". Exact-id match (not a
+  // /qwen3-235b/i prefix) so a future Scaleway listing of the same family with a
+  // different ceiling is not clamped by this rule; `clampToModelMaxOutput` also
+  // keeps the clamp at or below the catalog ceiling when one is registered.
+  {
+    provider: "scaleway",
+    match: /^qwen3-235b-a22b-instruct-2507$/,
+    maxOutputCap: 16384,
+    clampToModelMaxOutput: true,
+  },
 ];
 
 function matches(rule: StripRule, model: string): boolean {
