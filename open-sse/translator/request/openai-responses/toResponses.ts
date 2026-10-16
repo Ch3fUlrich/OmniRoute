@@ -143,9 +143,9 @@ function responsesProviderRequiresReasoningPresence(provider: unknown, model: un
     .toLowerCase();
   return (
     normalizedProvider === "xiaomi-mimo" ||
-    /(^|\/)mimo/i.test(normalizedModel) ||
+    /(^|\/)mimo([-/._]|$)/i.test(normalizedModel) ||
     normalizedProvider === "deepseek" ||
-    /(^|\/)deepseek/i.test(normalizedModel)
+    /(^|\/)deepseek([-/._]|$)/i.test(normalizedModel)
   );
 }
 

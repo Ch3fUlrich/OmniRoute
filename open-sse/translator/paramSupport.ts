@@ -158,7 +158,7 @@ const STRIP_RULES: StripRule[] = [
   // keeps the clamp at or below the catalog ceiling when one is registered.
   {
     provider: "scaleway",
-    match: /^qwen3-235b-a22b-instruct-2507$/,
+    match: /^qwen3-235b-a22b-instruct-2507$/i,
     maxOutputCap: 16384,
     clampToModelMaxOutput: true,
   },
