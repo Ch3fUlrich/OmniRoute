@@ -151,6 +151,17 @@ const STRIP_RULES: StripRule[] = [
   // single model id, since AgentRouter's static catalog carries no glm-*
   // entries (passthroughModels: true lets arbitrary GLM ids through). #13696.
   { provider: "agentrouter", match: /glm-/i, mapThinkingType: { adaptive: "enabled" } },
+  // Scaleway rejects anything above 16384 output tokens for this exact model id:
+  // HTTP 400 "max_completion_tokens is limited to 16384". Exact-id match (not a
+  // /qwen3-235b/i prefix) so a future Scaleway listing of the same family with a
+  // different ceiling is not clamped by this rule; `clampToModelMaxOutput` also
+  // keeps the clamp at or below the catalog ceiling when one is registered.
+  {
+    provider: "scaleway",
+    match: /^qwen3-235b-a22b-instruct-2507$/,
+    maxOutputCap: 16384,
+    clampToModelMaxOutput: true,
+  },
 ];
 
 function matches(rule: StripRule, model: string): boolean {
