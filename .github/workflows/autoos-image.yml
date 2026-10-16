@@ -10,6 +10,10 @@ on:
   push:
     branches: ["autoos/**"]
     tags: ["v*-autoos*"]
+  # Fallback trigger: push events on this fork have not started runs; a same-repo PR from an
+  # autoos/* branch does (the build job is gated on the head branch below).
+  pull_request:
+    branches: ["**"]
   workflow_dispatch:
 
 permissions:
@@ -21,12 +25,14 @@ concurrency:
 
 jobs:
   autoos-tests:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'autoos/')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -51,6 +57,7 @@ jobs:
             tests/unit/responses-reasoning-presence-deepseek.test.ts
 
   image:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'autoos/')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -60,14 +67,15 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Resolve tags
         id: meta
         env:
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.event_name == 'pull_request' && 'branch' || github.ref_type }}
+          REF_NAME: ${{ github.head_ref || github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           OWNER: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
@@ -106,7 +114,7 @@ jobs:
           docker build --platform linux/amd64 \
             --build-arg BASE_IMAGE=omniroute-upstream-build:local \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
-            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }}" \
             -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version_tag }}" \
             -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}" \
             -f Dockerfile.autoos .
