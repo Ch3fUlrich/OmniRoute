@@ -4,7 +4,10 @@
  * Extracted verbatim from openai-responses.ts. Registration stays in the host.
  */
 import { isOpenAIResponsesStoreEnabled } from "@/lib/providers/requestDefaults";
-import { isInternalReasoningPlaceholder } from "../../../utils/reasoningPlaceholder.ts";
+import {
+  isInternalReasoningPlaceholder,
+  NON_ANTHROPIC_THINKING_PLACEHOLDER,
+} from "../../../utils/reasoningPlaceholder.ts";
 import { getReadableReasoningValue } from "../../../utils/reasoningFields.ts";
 import { generateToolCallId } from "../../helpers/toolCallHelper.ts";
 import {
@@ -75,6 +78,25 @@ function buildResponsesTextParts(content: unknown): unknown[] {
     return parts.length > 0 ? parts : [{ type: "input_text", text: "" }];
   }
   return [{ type: "input_text", text: "" }];
+}
+
+// DeepSeek and Xiaomi MiMo thinking mode reject Responses-API function_call input items
+// that are not preceded by a reasoning item (400: "The reasoning_text in the thinking mode
+// must be passed back to the API"). Mirrors translator/index.ts:requiresReasoningContentPresence
+// plus DeepSeek, kept local to avoid a cross-module import.
+function responsesProviderRequiresReasoningPresence(provider: unknown, model: unknown): boolean {
+  const normalizedProvider = String(provider ?? "")
+    .trim()
+    .toLowerCase();
+  const normalizedModel = String(model ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    normalizedProvider === "xiaomi-mimo" ||
+    /(^|\/)mimo/i.test(normalizedModel) ||
+    normalizedProvider === "deepseek" ||
+    /(^|\/)deepseek/i.test(normalizedModel)
+  );
 }
 
 export function openaiToOpenAIResponsesRequest(
@@ -195,7 +217,8 @@ export function openaiToOpenAIResponsesRequest(
     // Convert assistant messages
     if (role === "assistant") {
       const reasoning = getReadableReasoningValue(msg).trim();
-      if (reasoning && !isInternalReasoningPlaceholder(reasoning)) {
+      const reasoningIsPlaceholder = isInternalReasoningPlaceholder(reasoning);
+      if (reasoning && !reasoningIsPlaceholder) {
         // Compatibility is decided before protocol translation; this adapter
         // only encodes the surviving portable plaintext state.
         input.push({
@@ -208,6 +231,21 @@ export function openaiToOpenAIResponsesRequest(
           // client's plaintext reasoning, so there is no source summary to
           // preserve; default to an empty array like the replay sanitizer does
           // for opaque items in reasoningInputPolicy.ts (#11108).
+          summary: [],
+        });
+      } else if (
+        // On a reasoning-cache miss the replay layer injects a placeholder into
+        // reasoning_content, which the check above skips as internal. Re-inject it so the
+        // Responses input carries a reasoning item before function_call for providers that
+        // 400 without one.
+        (reasoningIsPlaceholder || !reasoning) &&
+        responsesProviderRequiresReasoningPresence(credentialRecord._provider, model) &&
+        Array.isArray(msg.tool_calls) &&
+        msg.tool_calls.length > 0
+      ) {
+        input.push({
+          type: "reasoning",
+          content: [{ type: "reasoning_text", text: NON_ANTHROPIC_THINKING_PLACEHOLDER }],
           summary: [],
         });
       }
