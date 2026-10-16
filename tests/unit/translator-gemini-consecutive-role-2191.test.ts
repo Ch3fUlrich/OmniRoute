@@ -71,10 +71,12 @@ test("OpenAI -> Gemini does not emit a tool-result(user) turn adjacent to a user
   const result = openaiToGeminiRequest("gemini-2.5-pro", body, false) as GeminiReq;
 
   assertNoConsecutiveSameRole(result.contents, "tool-result-then-user");
-  // Roles must strictly alternate: user, model, user (toolResp + "Now read a.ts" merged).
+  // Roles must strictly alternate. The merged user turn mixes a functionResponse with text,
+  // which Vertex rejects as "ends with a model turn", so guardGeminiTrailingTurn splits it:
+  // user, model, user[toolResp], model["Noted."], user["Now read a.ts"].
   assert.deepEqual(
     result.contents.map((c) => c.role),
-    ["user", "model", "user"]
+    ["user", "model", "user", "model", "user"]
   );
 });
 
