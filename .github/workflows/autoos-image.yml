@@ -1,0 +1,141 @@
+name: AutoOS image (GHCR)
+
+# Builds the upstream Dockerfile (target runner-base, linux/amd64) plus the thin
+# Dockerfile.autoos layer and pushes ghcr.io/<owner>/omniroute:
+#   <package.json version>-autoos.<n>   (n = tag suffix on a v*-autoos.<n> tag, else run number)
+#   sha-<short>
+# Only the autoos/* branches and v*-autoos* tags build; nothing else triggers it.
+
+on:
+  push:
+    branches: ["autoos/**"]
+    tags: ["v*-autoos*"]
+  # Fallback trigger: push events on this fork have not started runs; a same-repo PR from an
+  # autoos/* branch does (the build job is gated on the head branch below).
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: autoos-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autoos-tests:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'autoos/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install -g npm@12.0.2 && npm ci --legacy-peer-deps
+      - name: AutoOS patch tests
+        env:
+          DISABLE_SQLITE_AUTO_BACKUP: "true"
+        run: |
+          node --max-old-space-size=8192 --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-force-exit \
+            tests/unit/translator-gemini-trailing-turn-guard.test.ts \
+            tests/unit/translator-gemini-consecutive-role-2191.test.ts \
+            tests/unit/quota-cache-null-safety-total-less.test.ts \
+            tests/unit/quota-cache-antigravity-fraction-reported-10095.test.ts \
+            tests/unit/quota-cache-hydrate-5015.test.ts \
+            tests/unit/domain-branch-hardening.test.ts \
+            tests/unit/max-tokens-clamp-non-thinking.test.ts \
+            tests/unit/reasoning-token-buffer-6274.test.ts \
+            tests/unit/reasoning-token-buffer-9507.test.ts \
+            tests/unit/combo-routing-engine.test.ts \
+            tests/unit/param-support-qwen3-235b-clamp.test.ts \
+            tests/unit/responses-reasoning-presence-deepseek.test.ts \
+            tests/unit/translator-openai-responses-req.test.ts \
+            tests/unit/reasoning-cache.test.ts \
+            tests/unit/tool-request-sanitization.test.ts
+
+  image:
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'autoos/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Resolve tags
+        id: meta
+        env:
+          REF_TYPE: ${{ github.event_name == 'pull_request' && 'branch' || github.ref_type }}
+          REF_NAME: ${{ github.head_ref || github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          n="$RUN_NUMBER"
+          if [ "$REF_TYPE" = "tag" ]; then
+            suffix="${REF_NAME##*-autoos}"          # ".3" / "3" / ""
+            suffix="${suffix#.}"
+            case "$suffix" in ''|*[!0-9]*) ;; *) n="$suffix" ;; esac
+          fi
+          image="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')/omniroute"
+          {
+            echo "image=$image"
+            echo "version_tag=${version}-autoos.${n}"
+            echo "sha_tag=sha-${SHA:0:7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+      - name: Build upstream image (runner-base)
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker build --target runner-base --platform linux/amd64 \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            -t omniroute-upstream-build:local -f Dockerfile .
+
+      - name: Build AutoOS layer
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          docker build --platform linux/amd64 \
+            --build-arg BASE_IMAGE=omniroute-upstream-build:local \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }}" \
+            -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version_tag }}" \
+            -t "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}" \
+            -f Dockerfile.autoos .
+
+      - name: Smoke test (qodercli, bcryptjs, vertex guard present)
+        run: |
+          img="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}"
+          docker run --rm --entrypoint sh "$img" -c 'command -v qodercli && node -e "require(\"/app/node_modules/bcryptjs\")" && echo ok'
+
+      - name: Push
+        id: push
+        run: |
+          set -euo pipefail
+          for t in "${{ steps.meta.outputs.version_tag }}" "${{ steps.meta.outputs.sha_tag }}"; do
+            docker push "${{ steps.meta.outputs.image }}:$t"
+          done
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          { echo "### Image"; echo; echo '`'"$digest"'`'; echo; echo "tags: ${{ steps.meta.outputs.version_tag }}, ${{ steps.meta.outputs.sha_tag }}"; } >> "$GITHUB_STEP_SUMMARY"

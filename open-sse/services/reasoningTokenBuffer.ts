@@ -34,9 +34,11 @@ export function resolveReasoningBufferedMaxTokens(
   const current = toPositiveInteger(currentMaxTokens);
   if (current === null) return null;
 
-  const capabilities = getResolvedModelCapabilities(modelStr);
-  if (capabilities.supportsThinking !== true) return null;
-
+  // Deliberately NOT gated on `supportsThinking`: an explicit output cap is a
+  // hard upstream ceiling for EVERY model (a non-thinking model's oversized
+  // max_tokens gets the same upstream 400 a thinking model's does), so the cap
+  // clamps regardless of reasoning support. Models with no explicit cap still
+  // fall through to `null` below — nothing is rewritten for them.
   const maxOutputTokens = toPositiveInteger(getExplicitModelOutputCap(modelStr));
   if (maxOutputTokens === null) return null;
   if (current > maxOutputTokens) return maxOutputTokens;
