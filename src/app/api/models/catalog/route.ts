@@ -2,6 +2,7 @@ import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { getUnifiedModelsResponse } from "@/app/api/v1/models/catalog";
 import { INTERNAL_PROXY_ERROR, getCatalogDiagnosticsHeaders } from "@/lib/modelMetadataRegistry";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
+import { getAllModelBenchmarksMap, lookupModelBenchmarkFromMap } from "@/lib/db/modelBenchmarks";
 
 /**
  * GET /api/models/catalog
@@ -22,8 +23,14 @@ export async function GET(request: Request) {
       });
     }
 
+    let benchmarksMap = new Map();
+    try {
+      benchmarksMap = getAllModelBenchmarksMap();
+    } catch {}
+
     const catalog: Record<string, any> = {};
     for (const model of body.data || []) {
+      const benchmark = lookupModelBenchmarkFromMap(model.id, benchmarksMap);
       const providerId =
         typeof model.owned_by === "string" && model.owned_by.length > 0
           ? model.owned_by
@@ -57,6 +64,21 @@ export async function GET(request: Request) {
         ...(Array.isArray(model.supported_endpoints)
           ? { supported_endpoints: model.supported_endpoints }
           : {}),
+        benchmarks: benchmark
+          ? {
+              aaIntelligence: benchmark.aaIntelligence,
+              codingIndex: benchmark.codingIndex,
+              agenticIndex: benchmark.agenticIndex,
+              terminalBench: benchmark.terminalBench,
+              deepswe: benchmark.deepswe,
+              scicode: benchmark.scicode,
+              verifiedTokPerS: benchmark.verifiedTokPerS,
+              costPerTaskUsd: benchmark.costPerTaskUsd,
+              priceCliffTokens: benchmark.priceCliffTokens,
+              maxSafeEffort: benchmark.maxSafeEffort,
+              effortCaveat: benchmark.effortCaveat,
+            }
+          : null,
       });
 
       catalog[providerId] = bucket;

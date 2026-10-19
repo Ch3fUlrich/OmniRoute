@@ -15,6 +15,7 @@
  */
 
 import { MODE_PACKS } from "./modePacks";
+import { detectModelFamily } from "./modelFamily.ts";
 
 /**
  * Friendly latency-vs-quality preset aliases (#6024). These map human-facing
@@ -127,3 +128,107 @@ export function resolveRequestAutoControls(headers: {
     ...(budgetFallback !== undefined ? { budgetFallback } : {}),
   };
 }
+
+export interface RequestOverrides {
+  taskRole?: "implement" | "review" | "orchestrate" | "drive";
+  excludeFamilies?: string[];
+  authorModel?: string;
+  minIntelligence?: number;
+  risk?: "low" | "normal" | "high" | "critical";
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+}
+
+function getHeaderValue(headers: unknown, headerName: string): string | null {
+  if (!headers) return null;
+  const lowerName = headerName.toLowerCase();
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    const val =
+      (headers as { get(k: string): string | null }).get(headerName) ??
+      (headers as { get(k: string): string | null }).get(lowerName);
+    return val !== null && val !== undefined ? String(val) : null;
+  }
+  if (typeof headers === "object") {
+    const record = headers as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key.toLowerCase() === lowerName) {
+        const val = record[key];
+        return val !== null && val !== undefined ? String(val) : null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract routing envelope overrides from request headers.
+ */
+export function extractRequestOverrides(headers?: unknown): RequestOverrides {
+  const result: RequestOverrides = {};
+  if (!headers) return result;
+
+  const taskRoleRaw = getHeaderValue(headers, "x-omniroute-task-role")?.trim().toLowerCase();
+  if (
+    taskRoleRaw === "implement" ||
+    taskRoleRaw === "review" ||
+    taskRoleRaw === "orchestrate" ||
+    taskRoleRaw === "drive"
+  ) {
+    result.taskRole = taskRoleRaw;
+  }
+
+  const excludedSet = new Set<string>();
+  const excludeRaw = getHeaderValue(headers, "x-omniroute-exclude-family");
+  if (excludeRaw) {
+    for (const part of excludeRaw.split(",")) {
+      const trimmed = part.trim().toLowerCase();
+      if (trimmed.length > 0) {
+        excludedSet.add(trimmed);
+      }
+    }
+  }
+
+  const authorModelRaw = getHeaderValue(headers, "x-omniroute-author-model")?.trim();
+  if (authorModelRaw) {
+    result.authorModel = authorModelRaw;
+    const authorFamily = detectModelFamily(authorModelRaw);
+    if (authorFamily) {
+      excludedSet.add(authorFamily.toLowerCase());
+    }
+  }
+
+  if (excludedSet.size > 0) {
+    result.excludeFamilies = Array.from(excludedSet);
+  }
+
+  const minIntelRaw = getHeaderValue(headers, "x-omniroute-min-intelligence");
+  if (minIntelRaw) {
+    const val = Number(minIntelRaw.trim());
+    if (Number.isFinite(val) && val > 0) {
+      result.minIntelligence = val;
+    }
+  }
+
+  const riskRaw = getHeaderValue(headers, "x-omniroute-risk")?.trim().toLowerCase();
+  if (
+    riskRaw === "low" ||
+    riskRaw === "normal" ||
+    riskRaw === "high" ||
+    riskRaw === "critical"
+  ) {
+    result.risk = riskRaw;
+  }
+
+  const effortRaw = getHeaderValue(headers, "x-omniroute-effort")?.trim().toLowerCase();
+  if (
+    effortRaw === "low" ||
+    effortRaw === "medium" ||
+    effortRaw === "high" ||
+    effortRaw === "xhigh" ||
+    effortRaw === "max"
+  ) {
+    result.effort = effortRaw;
+  }
+
+  return result;
+}
+

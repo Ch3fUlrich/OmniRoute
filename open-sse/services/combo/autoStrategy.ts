@@ -43,6 +43,11 @@ import {
   type ScoringWeights,
 } from "../autoCombo/scoring.ts";
 import type { RoutingHint } from "../manifestAdapter";
+import {
+  filterTargetsByRequestEnvelope,
+  shouldBypassSessionStickiness,
+  type RequestRoutingEnvelope,
+} from "./requestEnvelopeFilter.ts";
 import { getCachedProviderConnections } from "../../../src/lib/db/readCache";
 import {
   getSyncedAvailableModels,
@@ -358,10 +363,13 @@ export function scoreAutoTargets(
   candidates: AutoProviderCandidate[],
   taskType: string | null,
   weights: ScoringWeights,
-  manifestHint?: RoutingHint | null
+  manifestHint?: RoutingHint | null,
+  envelope?: RequestRoutingEnvelope | null
 ) {
   const targetByExecutionKey = new Map(targets.map((target) => [target.executionKey, target]));
-  const activeCandidates = candidates.filter((candidate) => candidate.quotaCutoffBlocked !== true);
+  const rawCandidates = candidates.filter((candidate) => candidate.quotaCutoffBlocked !== true);
+  const activeCandidates = envelope ? filterTargetsByRequestEnvelope(rawCandidates, envelope) : rawCandidates;
+  const bypassStickiness = shouldBypassSessionStickiness(envelope);
   // Computed once per scoring pass, not per candidate — see computePoolMaxima's
   // doc comment (scoring.ts) for the O(n^2) OOM this avoids on large auto-combo
   // candidate pools (#OOM incident, zero-config auto combo expanding to 1000s
@@ -387,8 +395,11 @@ export function scoreAutoTargets(
         provider: candidate.provider,
         connectionId: candidate.connectionId ?? baseTarget.connectionId,
       };
+      const candidateForFactors = bypassStickiness
+        ? { ...candidate, contextAffinity: 0 }
+        : candidate;
       const factors = calculateFactors(
-        candidate as ProviderCandidate,
+        candidateForFactors as unknown as ProviderCandidate,
         activeCandidates as unknown as ProviderCandidate[],
         taskType ?? "general",
         getTaskFitness,

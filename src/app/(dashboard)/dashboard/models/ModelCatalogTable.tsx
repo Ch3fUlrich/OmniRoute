@@ -103,6 +103,10 @@ export default function ModelCatalogTable({
     flags: string;
     custom: string;
     free: string;
+    aaIntelligence?: string;
+    codingScore?: string;
+    verifiedTokPerS?: string;
+    costPerTaskUsd?: string;
   };
 }) {
   const firstResult = startIndex + 1;
@@ -111,7 +115,7 @@ export default function ModelCatalogTable({
   return (
     <>
       <div className="overflow-x-auto" role="region" aria-label="Model catalog table" tabIndex={0}>
-        <table className="min-w-[1040px] w-full border-collapse text-sm">
+        <table className="min-w-[1240px] w-full border-collapse text-sm">
           <caption className="sr-only">Model catalog across all providers</caption>
           <thead className="border-b border-border bg-black/[0.02] dark:bg-white/[0.02]">
             <tr>
@@ -152,6 +156,34 @@ export default function ModelCatalogTable({
               <SortableHeading
                 field="max_output_tokens"
                 label={labels.output}
+                activeField={sortField}
+                direction={sortDirection}
+                onSort={onSort}
+              />
+              <SortableHeading
+                field="aaIntelligence"
+                label={labels.aaIntelligence ?? "AA Intel"}
+                activeField={sortField}
+                direction={sortDirection}
+                onSort={onSort}
+              />
+              <SortableHeading
+                field="codingScore"
+                label={labels.codingScore ?? "Coding / SWE"}
+                activeField={sortField}
+                direction={sortDirection}
+                onSort={onSort}
+              />
+              <SortableHeading
+                field="verifiedTokPerS"
+                label={labels.verifiedTokPerS ?? "Speed (tok/s)"}
+                activeField={sortField}
+                direction={sortDirection}
+                onSort={onSort}
+              />
+              <SortableHeading
+                field="costPerTaskUsd"
+                label={labels.costPerTaskUsd ?? "Task Cost"}
                 activeField={sortField}
                 direction={sortDirection}
                 onSort={onSort}
@@ -226,6 +258,25 @@ export default function ModelCatalogTable({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-main">
                     {formatOptionalCount(model.max_output_tokens)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-main">
+                    {typeof model.aaIntelligence === "number" ? model.aaIntelligence.toFixed(1) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-main">
+                    {typeof model.codingScore === "number" ? `${model.codingScore.toFixed(1)}%` : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums text-text-main">
+                    {typeof model.verifiedTokPerS === "number"
+                      ? `${formatCount(model.verifiedTokPerS)} tok/s`
+                      : "—"}
+                  </td>
+                  <td
+                    className="whitespace-nowrap px-4 py-3 tabular-nums text-text-main"
+                    title={model.effortCaveat ?? undefined}
+                  >
+                    {typeof model.costPerTaskUsd === "number"
+                      ? `$${model.costPerTaskUsd.toFixed(2)}`
+                      : "—"}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">

@@ -671,6 +671,9 @@ async function handleComboChatInner({
     reasoningTokenBufferEnabled,
   } = phaseComboSetup(comboCtx);
   body = comboCtx.body;
+  if (requestHeaders && body && typeof body === "object" && !("_omnirouteHeaders" in body)) {
+    (body as Record<string, unknown>)._omnirouteHeaders = requestHeaders;
+  }
 
   // #10681: opaque per-invocation decision trace (safe routing metadata only).
   const traceInvocationId = invocationId ?? createInvocationId();

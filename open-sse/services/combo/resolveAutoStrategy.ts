@@ -39,6 +39,7 @@ import {
   mapIntentToTaskType,
   scoreAutoTargets,
 } from "./autoStrategy.ts";
+import { extractRoutingEnvelope } from "./requestEnvelopeFilter.ts";
 import type {
   AutoProviderCandidate,
   ComboLike,
@@ -126,7 +127,8 @@ export async function evaluateAutoCandidates(options: EvaluateAutoCandidatesOpti
       routableCandidates,
       options.taskType,
       options.weights,
-      options.manifestHint
+      options.manifestHint,
+      extractRoutingEnvelope(options.body)
     ),
   };
 }

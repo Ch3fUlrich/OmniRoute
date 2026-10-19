@@ -11,14 +11,41 @@ export interface CatalogModel {
   input_modalities?: string[];
   output_modalities?: string[];
   supported_endpoints?: string[];
+  benchmarks?: {
+    aaIntelligence?: number | null;
+    codingIndex?: number | null;
+    agenticIndex?: number | null;
+    terminalBench?: number | null;
+    deepswe?: number | null;
+    scicode?: number | null;
+    verifiedTokPerS?: number | null;
+    costPerTaskUsd?: number | null;
+    priceCliffTokens?: number | null;
+    maxSafeEffort?: string | null;
+    effortCaveat?: string | null;
+  } | null;
 }
 
 export interface CatalogModelRow extends CatalogModel {
   providerId: string;
   provider: string;
+  aaIntelligence?: number | null;
+  codingScore?: number | null;
+  verifiedTokPerS?: number | null;
+  costPerTaskUsd?: number | null;
+  effortCaveat?: string | null;
 }
 
-export type CatalogSortField = "provider" | "id" | "type" | "context_length" | "max_output_tokens";
+export type CatalogSortField =
+  | "provider"
+  | "id"
+  | "type"
+  | "context_length"
+  | "max_output_tokens"
+  | "aaIntelligence"
+  | "codingScore"
+  | "verifiedTokPerS"
+  | "costPerTaskUsd";
 export type CatalogSortDirection = "asc" | "desc";
 
 export interface CatalogFilters {
@@ -43,6 +70,28 @@ export function flattenCatalog(catalog: unknown): CatalogModelRow[] {
     for (const rawModel of rawBucket.models) {
       if (!isRecord(rawModel) || typeof rawModel.id !== "string") continue;
       const id = rawModel.id;
+
+      let aaIntelligence: number | null = null;
+      let codingScore: number | null = null;
+      let verifiedTokPerS: number | null = null;
+      let costPerTaskUsd: number | null = null;
+      let effortCaveat: string | null = null;
+
+      if (isRecord(rawModel.benchmarks)) {
+        const b = rawModel.benchmarks;
+        if (typeof b.aaIntelligence === "number") aaIntelligence = b.aaIntelligence;
+        if (typeof b.codingScore === "number") {
+          codingScore = b.codingScore;
+        } else if (typeof b.codingIndex === "number") {
+          codingScore = b.codingIndex;
+        } else if (typeof b.deepswe === "number") {
+          codingScore = b.deepswe;
+        }
+        if (typeof b.verifiedTokPerS === "number") verifiedTokPerS = b.verifiedTokPerS;
+        if (typeof b.costPerTaskUsd === "number") costPerTaskUsd = b.costPerTaskUsd;
+        if (typeof b.effortCaveat === "string") effortCaveat = b.effortCaveat;
+      }
+
       rows.push({
         providerId,
         provider,
@@ -68,12 +117,20 @@ export function flattenCatalog(catalog: unknown): CatalogModelRow[] {
         ...(Array.isArray(rawModel.supported_endpoints)
           ? { supported_endpoints: rawModel.supported_endpoints.filter(isString) }
           : {}),
+        aaIntelligence,
+        codingScore,
+        verifiedTokPerS,
+        costPerTaskUsd,
+        effortCaveat,
+        ...(isRecord(rawModel.benchmarks) ? { benchmarks: rawModel.benchmarks as any } : {}),
       });
     }
   }
 
   return rows;
 }
+
+export const flattenCatalogModels = flattenCatalog;
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
@@ -128,11 +185,28 @@ export function sortCatalogModels(
     const leftValue = left[field];
     const rightValue = right[field];
 
-    if (typeof leftValue === "number" || typeof rightValue === "number") {
-      // Keep unknown values last regardless of direction; absence is not zero.
-      if (typeof leftValue !== "number") return 1;
-      if (typeof rightValue !== "number") return -1;
-      if (leftValue !== rightValue) return (leftValue - rightValue) * multiplier;
+    const isNumericField =
+      field === "context_length" ||
+      field === "max_output_tokens" ||
+      field === "aaIntelligence" ||
+      field === "codingScore" ||
+      field === "verifiedTokPerS" ||
+      field === "costPerTaskUsd";
+
+    if (isNumericField || typeof leftValue === "number" || typeof rightValue === "number") {
+      const leftNum = typeof leftValue === "number" ? leftValue : null;
+      const rightNum = typeof rightValue === "number" ? rightValue : null;
+
+      // Keep unknown/null/undefined values last regardless of direction; absence is not zero.
+      if (leftNum === null && rightNum === null) {
+        // Fall through to secondary tiebreaker
+      } else if (leftNum === null) {
+        return 1;
+      } else if (rightNum === null) {
+        return -1;
+      } else if (leftNum !== rightNum) {
+        return (leftNum - rightNum) * multiplier;
+      }
     } else {
       const comparison = compareText(String(leftValue ?? ""), String(rightValue ?? ""));
       if (comparison !== 0) return comparison * multiplier;

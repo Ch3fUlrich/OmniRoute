@@ -46,6 +46,10 @@ import type {
   ResolvedComboTarget,
   ResolvedComboUnit,
 } from "./types.ts";
+import {
+  extractRoutingEnvelope,
+  filterTargetsByRequestEnvelope,
+} from "./requestEnvelopeFilter.ts";
 
 /**
  * #8488 / #5240: web-cookie (and similar) providers honestly advertise
@@ -755,6 +759,11 @@ export function filterTargetsByRequestCompatibility(
   options?: CompatFilterOptions
 ): ResolvedComboTarget[] {
   if (targets.length === 0) return targets;
+  const envelope = extractRoutingEnvelope(body);
+  if (envelope) {
+    targets = filterTargetsByRequestEnvelope(targets, envelope);
+    if (targets.length === 0 && envelope.taskRole === "review") return [];
+  }
   const requirements = deriveRequestCompatibilityRequirements(body);
   const needsFiltering =
     requirements.requiresTools ||

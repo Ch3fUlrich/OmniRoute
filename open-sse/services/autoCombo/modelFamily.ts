@@ -24,7 +24,9 @@ export type ModelFamily =
   | "kimi"
   | "qwen"
   | "deepseek"
-  | "gpt";
+  | "gpt"
+  | "claude"
+  | "muse";
 
 export const MODEL_FAMILIES: readonly ModelFamily[] = [
   "glm",
@@ -38,13 +40,42 @@ export const MODEL_FAMILIES: readonly ModelFamily[] = [
   "qwen",
   "deepseek",
   "gpt",
+  "claude",
+  "muse",
 ];
 
 const MODEL_FAMILY_SET: ReadonlySet<string> = new Set(MODEL_FAMILIES);
 
+export interface ModelFamilyMetadata {
+  family: ModelFamily;
+  providerOrigin: string;
+  capabilityTier: "flagship" | "pro" | "standard" | "lightweight" | string;
+  strengths: readonly string[];
+}
+
+export const MODEL_FAMILY_METADATA: Readonly<Partial<Record<ModelFamily, ModelFamilyMetadata>>> = {
+  claude: {
+    family: "claude",
+    providerOrigin: "anthropic",
+    capabilityTier: "flagship",
+    strengths: ["coding", "reasoning", "review", "agentic"],
+  },
+  muse: {
+    family: "muse",
+    providerOrigin: "opencode",
+    capabilityTier: "pro",
+    strengths: ["coding", "agentic", "fast"],
+  },
+};
+
 /** Model-id prefix → family. Matched against the bare model id (provider prefix, if
  * any, stripped) so both `glm-5.2` and `zai/glm-5.2` resolve the same way. */
 const FAMILY_ID_PATTERNS: ReadonlyArray<{ family: ModelFamily; pattern: RegExp }> = [
+  { family: "claude", pattern: /^claude-/i },
+  { family: "claude", pattern: /\bclaude\b/i },
+  { family: "claude", pattern: /\b(opus|sonnet|haiku)-\d/i },
+  { family: "muse", pattern: /^muse-/i },
+  { family: "muse", pattern: /muse-spark/i },
   { family: "glm", pattern: /^glm-/i },
   { family: "minimax", pattern: /^minimax-/i },
   { family: "mimo", pattern: /^mimo-/i },
@@ -83,7 +114,8 @@ export function isValidModelFamily(value: string | null | undefined): value is M
  */
 export function detectModelFamily(modelId: string | null | undefined): ModelFamily | null {
   if (typeof modelId !== "string" || modelId.trim().length === 0) return null;
-  const bare = modelId.includes("/") ? modelId.slice(modelId.lastIndexOf("/") + 1) : modelId;
+  const trimmed = modelId.trim();
+  const bare = trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
   for (const { family, pattern } of FAMILY_ID_PATTERNS) {
     if (pattern.test(bare)) return family;
   }

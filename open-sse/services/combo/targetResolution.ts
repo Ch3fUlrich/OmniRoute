@@ -86,6 +86,10 @@ import {
   type ApplyStickinessResult,
 } from "./sessionStickiness.ts";
 import { applyRequestTagRouting } from "./autoStrategy.ts";
+import {
+  extractRoutingEnvelope,
+  shouldBypassSessionStickiness,
+} from "./requestEnvelopeFilter.ts";
 import type {
   ComboCollectionLike,
   ComboLike,
@@ -515,6 +519,7 @@ async function applyContinuityFilters(
   // treat the result as a no-op so the recordStickyBinding write-back below is skipped.
   const disableSessionStickiness =
     cacheStrategyAffinityApplied ||
+    shouldBypassSessionStickiness(extractRoutingEnvelope(body)) ||
     resolveDisableSessionStickiness(
       config as Record<string, unknown> | null | undefined,
       settings as Record<string, unknown> | null | undefined

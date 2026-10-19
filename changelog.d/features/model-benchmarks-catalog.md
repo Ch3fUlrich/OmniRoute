@@ -1,0 +1,1 @@
+- **feat(models):** add Artificial Analysis v4.3.2 benchmark catalog, throughput metrics, and model catalog dashboard sorting.
