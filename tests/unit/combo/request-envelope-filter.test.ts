@@ -28,7 +28,7 @@ import { DEFAULT_WEIGHTS } from "../../../open-sse/services/autoCombo/scoring.ts
 
 describe("detectModelFamily", () => {
   it("recognizes all frontier coding model families with provider prefixes", () => {
-    assert.equal(detectModelFamily("agy/claude-sonnet-5-5-high"), "claude");
+    assert.equal(detectModelFamily("agy/claude-sonnet-5-5-high"), "claude-sonnet");
     assert.equal(detectModelFamily("opencode-go/muse-spark-1.3-contributor"), "muse");
     assert.equal(detectModelFamily("mimo/mimo-v2.6-pro"), "mimo");
     assert.equal(detectModelFamily("cxa/gpt-6-luna-high"), "gpt");
@@ -38,11 +38,11 @@ describe("detectModelFamily", () => {
   });
 
   it("recognizes bare model strings and opus/sonnet/haiku patterns", () => {
-    assert.equal(detectModelFamily("claude-opus-5-5-high"), "claude");
-    assert.equal(detectModelFamily("claude-haiku-4-5"), "claude");
-    assert.equal(detectModelFamily("haiku-4-5"), "claude");
-    assert.equal(detectModelFamily("sonnet-5-5"), "claude");
-    assert.equal(detectModelFamily("opus-4-1"), "claude");
+    assert.equal(detectModelFamily("claude-opus-5-5-high"), "claude-opus");
+    assert.equal(detectModelFamily("claude-haiku-4-5"), "claude-haiku");
+    assert.equal(detectModelFamily("haiku-4-5"), "claude-haiku");
+    assert.equal(detectModelFamily("sonnet-5-5"), "claude-sonnet");
+    assert.equal(detectModelFamily("opus-4-1"), "claude-opus");
     assert.equal(detectModelFamily("muse-spark"), "muse");
     assert.equal(detectModelFamily("glm-5.2-max"), "glm");
     assert.equal(detectModelFamily("kimi-k3-max"), "kimi");
@@ -56,12 +56,13 @@ describe("detectModelFamily", () => {
     assert.equal(detectModelFamily(undefined), null);
   });
 
-  it("includes claude and muse in MODEL_FAMILIES and exposes metadata", () => {
-    assert.ok(MODEL_FAMILIES.includes("claude"));
-    assert.ok(MODEL_FAMILIES.includes("muse"));
-    assert.equal(MODEL_FAMILY_METADATA.claude?.providerOrigin, "anthropic");
-    assert.equal(MODEL_FAMILY_METADATA.claude?.capabilityTier, "flagship");
-    assert.ok(MODEL_FAMILY_METADATA.claude?.strengths.includes("review"));
+  it("includes claude tiers in MODEL_FAMILIES and exposes metadata", () => {
+    assert.ok(MODEL_FAMILIES.includes("claude-sonnet"));
+    assert.ok(MODEL_FAMILIES.includes("claude-opus"));
+    assert.ok(MODEL_FAMILIES.includes("claude-haiku"));
+    assert.equal(MODEL_FAMILY_METADATA["claude-sonnet"]?.providerOrigin, "anthropic");
+    assert.equal(MODEL_FAMILY_METADATA["claude-sonnet"]?.capabilityTier, "flagship");
+    assert.ok(MODEL_FAMILY_METADATA["claude-sonnet"]?.strengths.includes("review"));
     assert.equal(MODEL_FAMILY_METADATA.muse?.providerOrigin, "opencode");
     assert.equal(MODEL_FAMILY_METADATA.muse?.capabilityTier, "pro");
   });
@@ -87,11 +88,11 @@ describe("extractRequestOverrides", () => {
   it("automatically appends authorModel family to excludeFamilies (deduplicated)", () => {
     const headers = {
       "X-OmniRoute-Author-Model": "agy/claude-sonnet-5-5-high",
-      "X-OmniRoute-Exclude-Family": "mimo, claude",
+      "X-OmniRoute-Exclude-Family": "mimo, claude-sonnet",
     };
     const overrides = extractRequestOverrides(headers);
     assert.equal(overrides.authorModel, "agy/claude-sonnet-5-5-high");
-    assert.deepEqual(overrides.excludeFamilies, ["mimo", "claude"]);
+    assert.deepEqual(overrides.excludeFamilies, ["mimo", "claude-sonnet"]);
   });
 
   it("appends authorModel family when excludeFamilies is otherwise unset", () => {
@@ -475,7 +476,7 @@ describe("buildSelectedTargetEnvelopeHeaders", () => {
     assert.deepEqual(headers, {
       "X-OmniRoute-Selected-Model": "agy/claude-sonnet-5-5-high",
       "X-OmniRoute-Selected-Provider": "agy",
-      "X-OmniRoute-Selected-Family": "claude",
+      "X-OmniRoute-Selected-Family": "claude-sonnet",
     });
   });
 

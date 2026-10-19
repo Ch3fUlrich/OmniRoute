@@ -193,9 +193,6 @@ export function extractRequestOverrides(headers?: unknown): RequestOverrides {
     const authorFamily = detectModelFamily(authorModelRaw);
     if (authorFamily) {
       excludedSet.add(authorFamily.toLowerCase());
-      if (authorFamily.startsWith("claude")) {
-        excludedSet.add("claude");
-      }
     }
   }
 

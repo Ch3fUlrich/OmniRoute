@@ -197,10 +197,7 @@ export function isModelFree(model: CatalogModelRow): boolean {
     return isFreeModel(model.providerId, { id: model.id });
   } catch {
     return false;
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
+  }
 }
 
 function searchableText(model: CatalogModelRow): string {
