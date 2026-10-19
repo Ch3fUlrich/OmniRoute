@@ -157,7 +157,10 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
   );
   if (envelope.authorModel) {
     const authorFamily = detectModelFamily(envelope.authorModel);
-    if (authorFamily) excluded.add(authorFamily.toLowerCase());
+    if (authorFamily) {
+      excluded.add(authorFamily.toLowerCase());
+      if (authorFamily.startsWith("claude")) excluded.add("claude");
+    }
   }
 
   if (excluded.size > 0) {
@@ -165,9 +168,17 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
       const family = detectModelFamily(target.modelStr);
       if (envelope.taskRole === "review") {
         // Fail-closed on review: unknown family cannot prove cross-family independence
-        return Boolean(family) && !excluded.has(family!.toLowerCase());
+        if (!family) return false;
+        const famLower = family.toLowerCase();
+        if (excluded.has(famLower)) return false;
+        if (famLower.startsWith("claude") && excluded.has("claude")) return false;
+        return true;
       }
-      return !family || !excluded.has(family.toLowerCase());
+      if (!family) return true;
+      const famLower = family.toLowerCase();
+      if (excluded.has(famLower)) return false;
+      if (famLower.startsWith("claude") && excluded.has("claude")) return false;
+      return true;
     });
     if (envelope.taskRole === "review") {
       filtered = nonExcluded;

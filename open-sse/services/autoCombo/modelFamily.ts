@@ -25,7 +25,9 @@ export type ModelFamily =
   | "qwen"
   | "deepseek"
   | "gpt"
-  | "claude"
+  | "claude-opus"
+  | "claude-sonnet"
+  | "claude-haiku"
   | "muse";
 
 export const MODEL_FAMILIES: readonly ModelFamily[] = [
@@ -40,8 +42,9 @@ export const MODEL_FAMILIES: readonly ModelFamily[] = [
   "qwen",
   "deepseek",
   "gpt",
-  "claude",
-  "muse",
+  "claude-opus",
+  "claude-sonnet",
+  "claude-haiku",
 ];
 
 const MODEL_FAMILY_SET: ReadonlySet<string> = new Set(MODEL_FAMILIES);
@@ -54,11 +57,23 @@ export interface ModelFamilyMetadata {
 }
 
 export const MODEL_FAMILY_METADATA: Readonly<Partial<Record<ModelFamily, ModelFamilyMetadata>>> = {
-  claude: {
-    family: "claude",
+  "claude-opus": {
+    family: "claude-opus",
     providerOrigin: "anthropic",
     capabilityTier: "flagship",
     strengths: ["coding", "reasoning", "review", "agentic"],
+  },
+  "claude-sonnet": {
+    family: "claude-sonnet",
+    providerOrigin: "anthropic",
+    capabilityTier: "flagship",
+    strengths: ["coding", "reasoning", "review", "agentic"],
+  },
+  "claude-haiku": {
+    family: "claude-haiku",
+    providerOrigin: "anthropic",
+    capabilityTier: "lightweight",
+    strengths: ["coding", "fast"],
   },
   muse: {
     family: "muse",
@@ -71,11 +86,6 @@ export const MODEL_FAMILY_METADATA: Readonly<Partial<Record<ModelFamily, ModelFa
 /** Model-id prefix → family. Matched against the bare model id (provider prefix, if
  * any, stripped) so both `glm-5.2` and `zai/glm-5.2` resolve the same way. */
 const FAMILY_ID_PATTERNS: ReadonlyArray<{ family: ModelFamily; pattern: RegExp }> = [
-  { family: "claude", pattern: /^claude-/i },
-  { family: "claude", pattern: /\bclaude\b/i },
-  { family: "claude", pattern: /\b(opus|sonnet|haiku)-\d/i },
-  { family: "muse", pattern: /^muse-/i },
-  { family: "muse", pattern: /muse-spark/i },
   { family: "glm", pattern: /^glm-/i },
   { family: "minimax", pattern: /^minimax-/i },
   { family: "mimo", pattern: /^mimo-/i },
@@ -86,6 +96,12 @@ const FAMILY_ID_PATTERNS: ReadonlyArray<{ family: ModelFamily; pattern: RegExp }
   { family: "qwen", pattern: /^qwen/i },
   { family: "deepseek", pattern: /^deepseek-/i },
   { family: "gpt", pattern: /^gpt-/i },
+  // #15675: Claude tiers. Matches `claude-opus-4-8`, `claude-4.6-opus-high` and
+  // Bedrock-style `us.anthropic.claude-opus-4-v1:0` (the `.`-separated prefix).
+  { family: "claude-opus", pattern: /(?:^|\.)claude-(?:\d[\d.-]*-)?opus|\bopus-\d/i },
+  { family: "claude-sonnet", pattern: /(?:^|\.)claude-(?:\d[\d.-]*-)?sonnet|\bsonnet-\d/i },
+  { family: "claude-haiku", pattern: /(?:^|\.)claude-(?:\d[\d.-]*-)?haiku|\bhaiku-\d/i },
+  { family: "muse", pattern: /^muse-|\bmuse-spark\b/i },
 ];
 
 /**
