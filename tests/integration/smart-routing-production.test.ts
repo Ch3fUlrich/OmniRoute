@@ -66,7 +66,13 @@ test("Database & Catalog Pipeline: seeds, queries, rankings, and JSON round-trip
   seedDefaultModelBenchmarks();
 
   const benchmarks = listModelBenchmarks();
-  assert.equal(benchmarks.length, 22, "All 22 verified AA v4.3.2 models seeded");
+  assert.equal(benchmarks.length, 23, "All 23 verified AA v4.3.2 models seeded");
+
+  // Verify gemini-4-argon-contributor exists and has 53.0 intelligence
+  const argon = getModelBenchmark("gemini-4-argon-contributor");
+  assert.ok(argon, "gemini-4-argon-contributor benchmark found");
+  assert.equal(argon?.aaIntelligence, 53.0);
+  assert.equal(argon?.verifiedTokPerS, 115);
 
   // Verify mimo-v2.6-pro ranks above qwen3.8-max in intelligence
   const mimo = getModelBenchmark("mimo-v2.6-pro");
@@ -90,10 +96,10 @@ test("Database & Catalog Pipeline: seeds, queries, rankings, and JSON round-trip
   // Test JSON export & import round-trip
   const exported = exportBenchmarksToJson();
   const parsed = JSON.parse(exported);
-  assert.equal(parsed.length, 22);
+  assert.equal(parsed.length, 23);
 
   const importedCount = importBenchmarksFromJson(exported);
-  assert.equal(importedCount, 22, "Imported all 22 benchmarks");
+  assert.equal(importedCount, 23, "Imported all 23 benchmarks");
 });
 
 // ── 2. End-to-End handleComboChat Production Simulation ───────────────────────

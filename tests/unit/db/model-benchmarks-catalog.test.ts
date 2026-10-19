@@ -36,7 +36,14 @@ test("model_benchmarks — seeds all 22 verified AA v4.3.2 benchmark rows", () =
   assert.ok(map.size > 0, "Benchmark map should not be empty");
 
   const benchmarks = listModelBenchmarks();
-  assert.equal(benchmarks.length, 22, "Expected exactly 22 verified models");
+  assert.equal(benchmarks.length, 23, "Expected exactly 23 verified models");
+
+  // Verify gemini-4-argon-contributor (53.0)
+  const argon = getModelBenchmark("gemini-4-argon-contributor");
+  assert.ok(argon, "gemini-4-argon-contributor should exist");
+  assert.equal(argon?.aaIntelligence, 53.0);
+  assert.equal(argon?.deepswe, 77.9);
+  assert.equal(argon?.verifiedTokPerS, 115);
 
   // Verify ranking: mimo-v2.6-pro (46.0) ranked above qwen3.8-max (45.4)
   const mimoPro = getModelBenchmark("mimo-v2.6-pro");
@@ -120,7 +127,7 @@ test("model_benchmarks — JSON export & import round-trip", () => {
 
   const parsed = JSON.parse(exportedJson);
   assert.ok(Array.isArray(parsed), "Parsed JSON should be an array");
-  assert.equal(parsed.length, 22, "Exported array should have 22 entries");
+  assert.equal(parsed.length, 23, "Exported array should have 23 entries");
 
   // Modify an entry and import
   const updatedList: ModelBenchmarkEntry[] = parsed.map((item: ModelBenchmarkEntry) => {
@@ -131,7 +138,7 @@ test("model_benchmarks — JSON export & import round-trip", () => {
   });
 
   const importedCount = importBenchmarksFromJson(JSON.stringify(updatedList));
-  assert.equal(importedCount, 22, "Should import 22 entries");
+  assert.equal(importedCount, 23, "Should import 23 entries");
 
   const reloaded = getModelBenchmark("mimo-v2.6-pro");
   assert.equal(reloaded?.verifiedTokPerS, 55);

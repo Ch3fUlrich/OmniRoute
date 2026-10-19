@@ -21,6 +21,7 @@ export interface RequestRoutingEnvelope {
 export const BUILT_IN_INTELLIGENCE_INDEX: Readonly<Record<string, number>> = {
   "claude-opus-5-5-high": 57.6,
   "gemini-4-argon-high": 53.0,
+  "gemini-4-argon-contributor": 53.0,
   "gpt-6-astra-max": 53.0,
   "gpt-6-sol-max": 52.0,
   "claude-sonnet-5-5-xhigh": 51.9,
