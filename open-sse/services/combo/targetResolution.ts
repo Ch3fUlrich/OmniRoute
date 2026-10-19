@@ -26,6 +26,7 @@
  */
 import { getModelLockoutInfo, isModelLocked } from "../accountFallback.ts";
 import { parseAutoPrefix } from "../autoCombo/autoPrefix.ts";
+import { detectModelFamily } from "../autoCombo/modelFamily.ts";
 import { handlePipelineCombo, buildPipelineResponse } from "../autoCombo/pipelineRouter.ts";
 import type { resolveComboSetupConfig } from "../comboConfig.ts";
 import { orderTargetsByEvalScores } from "../evalRouting.ts";
@@ -557,6 +558,34 @@ async function applyContinuityFilters(
     failOpen: compatFilterFailOpen,
   });
   if (orderedTargets.length === 0 && preCompatTargets.length > 0) {
+    const envelope = extractRoutingEnvelope(body);
+    if (envelope?.taskRole === "review") {
+      const authorFamily = envelope.authorModel ? detectModelFamily(envelope.authorModel) : "author";
+      const message = `All targets for combo "${combo.name}" were excluded by cross-family review policy (author family: ${authorFamily ?? "unknown"}). Review cannot be self-performed.`;
+      const effectiveSessionId: string | null = combo.context_cache_protection
+        ? (relayOptions?.sessionId ?? null)
+        : null;
+      recordComboFailure(effectiveSessionId, combo.name);
+      return {
+        earlyResponse: errorResponseWithComboDiagnostics(
+          400,
+          message,
+          {
+            poolSize: preCompatTargets.length,
+            attempted: 0,
+            excluded: preCompatTargets.map((t) => ({
+              provider: t.provider,
+              model: t.modelStr,
+              reason: "cross_family_review_exclusion",
+            })),
+            attemptOrder: [],
+            terminalReason: "cross_family_review_exclusion",
+            recovery: buildRecoveryHint("no_executable_targets"),
+          },
+          { code: "review_target_exhaustion", type: "invalid_request_error" }
+        ),
+      };
+    }
     const exhaustion = describeCapabilityFilterExhaustion(preCompatTargets, body, combo.name);
     if (exhaustion) {
       // Match handleComboChat: only track failures under context-cache protection pins.

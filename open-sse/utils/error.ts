@@ -256,6 +256,7 @@ const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
   "request_failed",
   "resource_exhausted",
   "resource_pressure",
+  "review_target_exhaustion",
   "risk_session_stale",
   "semaphore_queue_full",
   "semaphore_timeout",
