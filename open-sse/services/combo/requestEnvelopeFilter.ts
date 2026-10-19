@@ -155,6 +155,9 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
   const excluded = new Set<string>(
     (envelope.excludeFamilies ?? []).map((f) => f.toLowerCase())
   );
+  for (const f of Array.from(excluded)) {
+    if (f.startsWith("claude")) excluded.add("claude");
+  }
   if (envelope.authorModel) {
     const authorFamily = detectModelFamily(envelope.authorModel);
     if (authorFamily) {
