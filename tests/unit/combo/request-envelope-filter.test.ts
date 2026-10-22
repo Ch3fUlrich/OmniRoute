@@ -16,14 +16,15 @@ import {
   getModelIntelligenceScore,
   extractRoutingEnvelope,
   shouldBypassSessionStickiness,
-  clampSafeEffortForModel,
   filterTargetsByRequestEnvelope,
-  buildSelectedTargetEnvelopeHeaders,
   type RequestRoutingEnvelope,
 } from "../../../open-sse/services/combo/requestEnvelopeFilter.ts";
 import { filterTargetsByRequestCompatibility } from "../../../open-sse/services/combo/comboStructure.ts";
 import { scoreAutoTargets } from "../../../open-sse/services/combo/autoStrategy.ts";
-import type { ResolvedComboTarget, AutoProviderCandidate } from "../../../open-sse/services/combo/types.ts";
+import type {
+  ResolvedComboTarget,
+  AutoProviderCandidate,
+} from "../../../open-sse/services/combo/types.ts";
 import { DEFAULT_WEIGHTS } from "../../../open-sse/services/autoCombo/scoring.ts";
 
 describe("detectModelFamily", () => {
@@ -304,26 +305,6 @@ describe("shouldBypassSessionStickiness", () => {
   });
 });
 
-describe("clampSafeEffortForModel", () => {
-  it("clamps max effort to xhigh for claude-sonnet-5-5 models", () => {
-    assert.equal(clampSafeEffortForModel("claude-sonnet-5-5-xhigh", "max"), "xhigh");
-    assert.equal(clampSafeEffortForModel("agy/claude-sonnet-5-5-high", "max"), "xhigh");
-    assert.equal(clampSafeEffortForModel("claude-sonnet-5-5-medium", "max"), "xhigh");
-  });
-
-  it("leaves max effort unchanged for other models", () => {
-    assert.equal(clampSafeEffortForModel("gpt-6-sol-max", "max"), "max");
-    assert.equal(clampSafeEffortForModel("mimo-v2.6-pro", "max"), "max");
-    assert.equal(clampSafeEffortForModel("claude-opus-5-5-high", "max"), "max");
-  });
-
-  it("leaves other effort levels unchanged for sonnet", () => {
-    assert.equal(clampSafeEffortForModel("claude-sonnet-5-5-high", "high"), "high");
-    assert.equal(clampSafeEffortForModel("claude-sonnet-5-5-high", "low"), "low");
-    assert.equal(clampSafeEffortForModel("claude-sonnet-5-5-high", null), null);
-  });
-});
-
 describe("Min-Intelligence filtering and intelligence index", () => {
   const candidatePool = [
     { modelStr: "mimo/mimo-v2.6-pro", provider: "mimo" }, // score: 46.0
@@ -547,28 +528,23 @@ describe("extractRoutingEnvelope & comboStructure integration", () => {
   });
 });
 
-describe("buildSelectedTargetEnvelopeHeaders", () => {
-  it("formats selected target response headers", () => {
-    const headers = buildSelectedTargetEnvelopeHeaders({
-      modelStr: "agy/claude-sonnet-5-5-high",
-      provider: "agy",
-    });
-    assert.deepEqual(headers, {
-      "X-OmniRoute-Selected-Model": "agy/claude-sonnet-5-5-high",
-      "X-OmniRoute-Selected-Provider": "agy",
-      "X-OmniRoute-Selected-Family": "claude-sonnet",
-    });
-  });
-
-  it("handles empty provider and unknown family", () => {
-    const headers = buildSelectedTargetEnvelopeHeaders({
-      modelStr: "unknown-custom-model",
-      provider: null,
-    });
-    assert.deepEqual(headers, {
-      "X-OmniRoute-Selected-Model": "unknown-custom-model",
-      "X-OmniRoute-Selected-Provider": "",
-      "X-OmniRoute-Selected-Family": "unknown",
-    });
+describe("advisory risk and effort envelope fields", () => {
+  it("carries valid headers and drops invalid values", () => {
+    for (const [risk, effort] of [
+      ["high", "max"],
+      ["invalid", "invalid"],
+    ]) {
+      const headers = {
+        "X-OmniRoute-Task-Role": "implement",
+        "X-OmniRoute-Risk": risk,
+        "X-OmniRoute-Effort": effort,
+      };
+      for (const input of [headers, new Headers(headers)]) {
+        const envelope = extractRoutingEnvelope(null, input);
+        assert.equal(envelope?.taskRole, "implement");
+        assert.equal(envelope?.risk, risk === "high" ? "high" : undefined);
+        assert.equal(envelope?.effort, effort === "max" ? "max" : undefined);
+      }
+    }
   });
 });

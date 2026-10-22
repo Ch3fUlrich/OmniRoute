@@ -13,7 +13,9 @@ export interface RequestRoutingEnvelope {
   excludeFamilies?: string[];
   authorModel?: string;
   minIntelligence?: number;
+  /** Accepted and carried in the envelope for caller accounting; no router filter reads it yet. */
   risk?: "low" | "normal" | "high" | "critical";
+  /** Accepted and carried in the envelope for caller accounting; no router filter reads it yet. */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   requiredContextTokens?: number;
 }
@@ -126,16 +128,6 @@ export function shouldBypassSessionStickiness(
   return envelope.taskRole === "review" || (envelope.excludeFamilies?.length ?? 0) > 0;
 }
 
-export function clampSafeEffortForModel(
-  modelStr: string,
-  effort: string | null | undefined
-): string | null {
-  if (effort === "max" && /claude-sonnet-5-5/i.test(modelStr)) {
-    return "xhigh";
-  }
-  return effort ?? null;
-}
-
 export function isGatedCodexTarget(modelStr: string, provider?: string | null): boolean {
   const lower = (modelStr || "").toLowerCase();
   const prov = (provider || "").toLowerCase();
@@ -242,15 +234,4 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
   }
 
   return filtered;
-}
-
-export function buildSelectedTargetEnvelopeHeaders(target: {
-  modelStr: string;
-  provider?: string | null;
-}): Record<string, string> {
-  return {
-    "X-OmniRoute-Selected-Model": target.modelStr,
-    "X-OmniRoute-Selected-Provider": target.provider || "",
-    "X-OmniRoute-Selected-Family": detectModelFamily(target.modelStr) || "unknown",
-  };
 }

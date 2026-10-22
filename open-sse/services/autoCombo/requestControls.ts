@@ -135,7 +135,9 @@ export interface RequestOverrides {
   excludeFamilies?: string[];
   authorModel?: string;
   minIntelligence?: number;
+  /** Accepted and carried in the envelope for caller accounting; no router filter reads it yet. */
   risk?: "low" | "normal" | "high" | "critical";
+  /** Accepted and carried in the envelope for caller accounting; no router filter reads it yet. */
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
 }
 
