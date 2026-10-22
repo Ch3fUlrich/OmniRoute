@@ -351,6 +351,45 @@ describe("Min-Intelligence filtering and intelligence index", () => {
     assert.equal(survivors[2].modelStr, "cxa/gpt-6-luna-high"); // 38.4
   });
 
+  it("prefers table scores over built-in scores when applying the threshold", () => {
+    const pool = [
+      { modelStr: "mimo/mimo-v2.6-pro" },
+      { modelStr: "anthropic/claude-opus-5-5-high" },
+    ];
+    const scores = new Map([
+      [pool[0].modelStr, 80],
+      [pool[1].modelStr, 30],
+    ]);
+    assert.deepEqual(filterTargetsByRequestEnvelope(pool, { minIntelligence: 50 }, scores), [
+      pool[0],
+    ]);
+    assert.deepEqual(filterTargetsByRequestEnvelope(pool, { minIntelligence: 50 }), [pool[1]]);
+  });
+
+  it("uses built-in scores for models absent from the table map", () => {
+    const scores = new Map([[candidatePool[0].modelStr, 30]]);
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope(candidatePool, { minIntelligence: 45 }, scores),
+      [candidatePool[1]]
+    );
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope(candidatePool, { minIntelligence: 45 }, new Map()),
+      candidatePool.slice(0, 2)
+    );
+  });
+
+  it("uses table scores for fallback ordering when no model qualifies", () => {
+    const scores = new Map([
+      [candidatePool[0].modelStr, 10],
+      [candidatePool[1].modelStr, 30],
+      [candidatePool[2].modelStr, 20],
+    ]);
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope(candidatePool, { minIntelligence: 50 }, scores),
+      [candidatePool[1], candidatePool[2], candidatePool[0]]
+    );
+  });
+
   it("resolves scores for the 22 built-in AA v4.3.2 models", () => {
     assert.equal(BUILT_IN_INTELLIGENCE_INDEX["claude-haiku-4-5"], 43.4);
     assert.equal(getModelIntelligenceScore("claude-opus-5-5-high"), 57.6);

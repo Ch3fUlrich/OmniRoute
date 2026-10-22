@@ -15,6 +15,7 @@
 
 import { getModelContextLimit } from "../../../src/lib/modelCapabilities";
 import { getHiddenModelsByProvider } from "../../../src/lib/db/models";
+import { getAllModelBenchmarksMap } from "../../../src/lib/db/modelBenchmarks";
 import {
   getComboModelString,
   implicitPinAllowlist,
@@ -766,7 +767,18 @@ export function filterTargetsByRequestCompatibility(
   if (targets.length === 0) return targets;
   const envelope = extractRoutingEnvelope(body);
   if (envelope) {
-    targets = filterTargetsByRequestEnvelope(targets, envelope);
+    let intelligenceMap: ReadonlyMap<string, number> | undefined;
+    if (envelope.minIntelligence !== undefined) {
+      try {
+        const entries = getAllModelBenchmarksMap();
+        intelligenceMap = new Map(
+          Array.from(entries, ([key, entry]) => [key, entry.aaIntelligence])
+        );
+      } catch {
+        // Benchmark storage is advisory; routing must survive DB unavailability.
+      }
+    }
+    targets = filterTargetsByRequestEnvelope(targets, envelope, intelligenceMap);
     if (targets.length === 0 && envelope.taskRole === "review") return [];
   }
   const outputLimitAdvisory = options?.outputLimitAdvisory === true;

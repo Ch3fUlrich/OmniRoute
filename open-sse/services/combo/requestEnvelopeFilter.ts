@@ -147,7 +147,8 @@ export function isGatedCodexTarget(modelStr: string, provider?: string | null): 
 
 export function filterTargetsByRequestEnvelope<T extends { modelStr: string; provider?: string }>(
   targets: T[],
-  envelope: RequestRoutingEnvelope | null | undefined
+  envelope: RequestRoutingEnvelope | null | undefined,
+  intelligenceMap?: ReadonlyMap<string, number>
 ): T[] {
   if (!envelope || targets.length === 0) return targets;
 
@@ -226,15 +227,15 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
   ) {
     const minIntel = envelope.minIntelligence;
     const qualifying = filtered.filter((target) => {
-      const score = getModelIntelligenceScore(target.modelStr);
+      const score = getModelIntelligenceScore(target.modelStr, intelligenceMap);
       return score === null || score >= minIntel;
     });
     if (qualifying.length > 0) {
       filtered = qualifying;
     } else {
       filtered = [...filtered].sort((a, b) => {
-        const scoreA = getModelIntelligenceScore(a.modelStr) ?? -Infinity;
-        const scoreB = getModelIntelligenceScore(b.modelStr) ?? -Infinity;
+        const scoreA = getModelIntelligenceScore(a.modelStr, intelligenceMap) ?? -Infinity;
+        const scoreB = getModelIntelligenceScore(b.modelStr, intelligenceMap) ?? -Infinity;
         return scoreB - scoreA;
       });
     }
