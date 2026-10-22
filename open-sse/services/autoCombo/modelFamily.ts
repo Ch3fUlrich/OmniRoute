@@ -45,6 +45,7 @@ export const MODEL_FAMILIES: readonly ModelFamily[] = [
   "claude-opus",
   "claude-sonnet",
   "claude-haiku",
+  "muse",
 ];
 
 const MODEL_FAMILY_SET: ReadonlySet<string> = new Set(MODEL_FAMILIES);

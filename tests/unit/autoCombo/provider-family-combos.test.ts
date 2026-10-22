@@ -58,6 +58,12 @@ afterAll(async () => {
 });
 
 describe("detectModelFamily (pure)", () => {
+  it("recognizes and advertises the muse family", () => {
+    assert.ok(MODEL_FAMILIES.includes("muse"));
+    assert.ok(AUTO_FAMILY_IDS.includes("auto/muse"));
+    assert.equal(detectModelFamily("muse-spark-1.3"), "muse");
+  });
+
   it("recognizes glm model ids", () => {
     assert.equal(detectModelFamily("glm-5.2"), "glm");
     assert.equal(detectModelFamily("zai/glm-5.2"), "glm");
@@ -99,6 +105,7 @@ describe("detectModelFamily (pure)", () => {
       "claude-opus",
       "claude-sonnet",
       "claude-haiku",
+      "muse",
     ]) {
       assert.equal(isValidModelFamily(family), true);
     }
@@ -120,6 +127,7 @@ describe("detectModelFamily (pure)", () => {
       "auto/llama",
       "auto/mimo",
       "auto/minimax",
+      "auto/muse",
       "auto/qwen",
       "auto/zai",
     ]);
