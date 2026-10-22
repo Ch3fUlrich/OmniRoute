@@ -130,6 +130,7 @@ export function resolveRequestAutoControls(headers: {
 }
 
 export interface RequestOverrides {
+  requiredContextTokens?: number;
   taskRole?: "implement" | "review" | "orchestrate" | "drive";
   excludeFamilies?: string[];
   authorModel?: string;
@@ -208,6 +209,18 @@ export function extractRequestOverrides(headers?: unknown): RequestOverrides {
     }
   }
 
+  const contextRaw = getHeaderValue(headers, "x-omniroute-required-context")?.trim();
+  if (contextRaw && /^(?:\d+|\d+(?:\.\d+)?[km])$/i.test(contextRaw)) {
+    const suffix = contextRaw.slice(-1).toLowerCase();
+    const multiplier = suffix === "k" ? 1000 : suffix === "m" ? 1000000 : 1;
+    const tokens = Math.round(
+      Number(multiplier === 1 ? contextRaw : contextRaw.slice(0, -1)) * multiplier
+    );
+    if (Number.isFinite(tokens) && tokens > 0) {
+      result.requiredContextTokens = tokens;
+    }
+  }
+
   const riskRaw = getHeaderValue(headers, "x-omniroute-risk")?.trim().toLowerCase();
   if (
     riskRaw === "low" ||
@@ -231,4 +244,3 @@ export function extractRequestOverrides(headers?: unknown): RequestOverrides {
 
   return result;
 }
-

@@ -69,6 +69,33 @@ describe("detectModelFamily", () => {
 });
 
 describe("extractRequestOverrides", () => {
+  it("parses required context from object maps and Headers", () => {
+    const absent: RequestOverrides = extractRequestOverrides({});
+    assert.equal(absent.requiredContextTokens, undefined);
+    const cases = [
+      ["131072", 131072],
+      [" 128k ", 128000],
+      ["1M", 1000000],
+      ["1.5m", 1500000],
+      ["1.2345k", 1235],
+    ] as const;
+    for (const [value, expected] of cases) {
+      const headers = { "X-OmniRoute-Required-Context": value };
+      for (const input of [headers, new Headers(headers)]) {
+        assert.equal(extractRequestOverrides(input).requiredContextTokens, expected);
+      }
+    }
+  });
+
+  it("ignores invalid required context values", () => {
+    for (const value of ["0", "-5", "abc", "", "NaN", "1.5", "1e5", "0k", "1kb", "Infinity"]) {
+      const headers = { "x-omniroute-required-context": value };
+      for (const input of [headers, new Headers(headers)]) {
+        assert.equal(extractRequestOverrides(input).requiredContextTokens, undefined);
+      }
+    }
+  });
+
   it("parses valid header controls and normalizes them", () => {
     const headers = {
       "X-OmniRoute-Task-Role": "review",
@@ -325,6 +352,7 @@ describe("Min-Intelligence filtering and intelligence index", () => {
   });
 
   it("resolves scores for the 22 built-in AA v4.3.2 models", () => {
+    assert.equal(BUILT_IN_INTELLIGENCE_INDEX["claude-haiku-4-5"], 43.4);
     assert.equal(getModelIntelligenceScore("claude-opus-5-5-high"), 57.6);
     assert.equal(getModelIntelligenceScore("gemini-4-argon-high"), 53.0);
     assert.equal(getModelIntelligenceScore("gpt-6-astra-max"), 53.0);
@@ -356,18 +384,18 @@ describe("Price-cliff guardrail", () => {
     { modelStr: "anthropic/claude-sonnet-5-5-high", provider: "anthropic" },
   ];
 
-  it("filters out haiku when context exceeds 100,000 tokens", () => {
+  it("filters out haiku when trajectory exceeds the price cliff", () => {
     const envelope: RequestRoutingEnvelope = {
-      requiredContextTokens: 120000,
+      requiredContextTokens: 0.7 * PRICE_CLIFF_TOKENS["claude-haiku-4-5"],
     };
     const survivors = filterTargetsByRequestEnvelope(pool, envelope);
     assert.equal(survivors.length, 1);
     assert.equal(survivors[0].modelStr, "anthropic/claude-sonnet-5-5-high");
   });
 
-  it("keeps haiku when context is within 100,000 tokens", () => {
+  it("keeps haiku when trajectory stays within the price cliff", () => {
     const envelope: RequestRoutingEnvelope = {
-      requiredContextTokens: 60000,
+      requiredContextTokens: 0.6 * PRICE_CLIFF_TOKENS["claude-haiku-4-5"],
     };
     const survivors = filterTargetsByRequestEnvelope(pool, envelope);
     assert.equal(survivors.length, 2);
@@ -375,6 +403,19 @@ describe("Price-cliff guardrail", () => {
 });
 
 describe("extractRoutingEnvelope & comboStructure integration", () => {
+  it("extracts a context-only header envelope and preserves body precedence", () => {
+    const headers = { "x-omniroute-required-context": "128k" };
+    assert.deepEqual(extractRoutingEnvelope(null, headers), { requiredContextTokens: 128000 });
+    assert.deepEqual(extractRoutingEnvelope(null, new Headers(headers)), {
+      requiredContextTokens: 128000,
+    });
+    assert.equal(
+      extractRoutingEnvelope({ _omnirouteEnvelope: { requiredContextTokens: 42000 } }, headers)
+        ?.requiredContextTokens,
+      42000
+    );
+  });
+
   it("extracts envelope from body._omnirouteEnvelope", () => {
     const body = {
       messages: [{ role: "user", content: "review this PR" }],

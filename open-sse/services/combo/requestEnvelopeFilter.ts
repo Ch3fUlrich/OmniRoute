@@ -49,6 +49,9 @@ export const PRICE_CLIFF_TOKENS: Readonly<Record<string, number>> = {
   "claude-haiku-5-5-high": 100000,
 };
 
+// Matches the plan-graph client's trajectory heuristic.
+export const PRICE_CLIFF_TRAJECTORY_FACTOR = 1.5;
+
 export function getModelIntelligenceScore(
   modelStr: string,
   customMap?: ReadonlyMap<string, number>
@@ -202,7 +205,10 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
         ? target.modelStr.slice(target.modelStr.lastIndexOf("/") + 1).toLowerCase()
         : target.modelStr.toLowerCase();
       const cliff = PRICE_CLIFF_TOKENS[bare] ?? PRICE_CLIFF_TOKENS[target.modelStr.toLowerCase()];
-      if (cliff !== undefined && envelope.requiredContextTokens! > cliff) {
+      if (
+        cliff !== undefined &&
+        envelope.requiredContextTokens! * PRICE_CLIFF_TRAJECTORY_FACTOR > cliff
+      ) {
         return false;
       }
       return true;
