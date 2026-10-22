@@ -342,7 +342,11 @@ function normalizeAttemptBody(opts: PrepareUpstreamBodyOptions): Body {
     translatedBody.reasoning !== undefined ||
     translatedBody.thinking !== undefined ||
     hasExplicitTemplateReasoning;
-  let bodyToSend: Body = { ...structuredClone(translatedBody), model: modelToCall };
+  // Internal routing metadata may contain non-cloneable objects (for example Headers).
+  const upstreamBody = Object.fromEntries(
+    Object.entries(translatedBody).filter(([key]) => !key.startsWith("_omniroute"))
+  );
+  let bodyToSend: Body = { ...structuredClone(upstreamBody), model: modelToCall };
   bodyToSend = normalizeThinkingForModel(bodyToSend, modelToCall);
   bodyToSend = normalizeClaudeAdaptiveThinking(bodyToSend, modelToCall);
   bodyToSend = normalizeClaudeDisabledThinkingEffort(bodyToSend, modelToCall, provider);
