@@ -10,7 +10,18 @@ import { isProviderSafetyStopsEnabled } from "../utils/providerSafety.ts";
 import { createChaosHeaderBarrier } from "./combo/chaosHeaderBarrier.ts";
 import { runComboWithSafetyLatch } from "./combo/safetyStopLatch.ts";
 
+// Carry only allowlisted routing controls: raw Headers are neither body data nor cloneable.
+export function attachRequestRoutingEnvelope(body: unknown, requestHeaders: unknown): void {
+  if (requestHeaders && body && typeof body === "object" && !("_omnirouteEnvelope" in body)) {
+    const envelope = extractRequestOverrides(requestHeaders);
+    if (Object.keys(envelope).length > 0) {
+      (body as Record<string, unknown>)._omnirouteEnvelope = envelope;
+    }
+  }
+}
+
 import { recordComboFailure } from "./combo/failureTracker.ts";
+import { extractRequestOverrides } from "./autoCombo/requestControls.ts";
 import { buildRecoveryHint } from "./combo/pinRecovery.ts";
 import { buildTargetTimeoutRunner } from "./combo/targetTimeoutRunner.ts";
 import { costKey, resolvePoolCosts } from "./combo/candidateCost.ts";
@@ -731,9 +742,7 @@ async function handleComboChatInner({
     reasoningTokenBufferEnabled,
   } = phaseComboSetup(comboCtx);
   body = comboCtx.body;
-  if (requestHeaders && body && typeof body === "object" && !("_omnirouteHeaders" in body)) {
-    (body as Record<string, unknown>)._omnirouteHeaders = requestHeaders;
-  }
+  attachRequestRoutingEnvelope(body, requestHeaders);
 
   // #10681: opaque per-invocation decision trace (safe routing metadata only).
   const traceInvocationId = invocationId ?? createInvocationId();
