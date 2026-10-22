@@ -1,15 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { resetDbInstance } from "../../../src/lib/db/core";
+import { getDbInstance, resetDbInstance } from "../../../src/lib/db/core";
 import {
   ensureTableExists,
   seedDefaultModelBenchmarks,
   getModelBenchmark,
   lookupModelBenchmarkFromMap,
   getAllModelBenchmarksMap,
-  upsertModelBenchmark,
-  bulkUpsertModelBenchmarks,
   listModelBenchmarks,
   exportBenchmarksToJson,
   importBenchmarksFromJson,
@@ -31,7 +29,33 @@ test.after(() => {
   resetDbInstance();
 });
 
-test("model_benchmarks — seeds all 22 verified AA v4.3.2 benchmark rows", () => {
+test("model_benchmarks — reads never seed an empty or populated table", () => {
+  const db = getDbInstance();
+  ensureTableExists(db);
+  db.prepare("DELETE FROM model_benchmarks").run();
+  const rowCount = () =>
+    (db.prepare("SELECT COUNT(*) AS count FROM model_benchmarks").get() as { count: number }).count;
+
+  for (let i = 0; i < 2; i++) {
+    assert.deepEqual(listModelBenchmarks(), []);
+    assert.equal(rowCount(), 0);
+    assert.equal(getAllModelBenchmarksMap().size, 0);
+    assert.equal(rowCount(), 0);
+  }
+
+  assert.equal(seedDefaultModelBenchmarks(db), DEFAULT_MODEL_BENCHMARKS.length);
+  for (let i = 0; i < 2; i++) {
+    assert.equal(listModelBenchmarks().length, DEFAULT_MODEL_BENCHMARKS.length);
+    const map = getAllModelBenchmarksMap();
+    for (const entry of DEFAULT_MODEL_BENCHMARKS) {
+      assert.equal(map.get(entry.modelId)?.aaIntelligence, entry.aaIntelligence);
+    }
+    assert.equal(rowCount(), DEFAULT_MODEL_BENCHMARKS.length);
+  }
+});
+
+test("model_benchmarks — seeds all 23 verified AA v4.3.2 benchmark rows", () => {
+  seedDefaultModelBenchmarks();
   const map = getAllModelBenchmarksMap();
   assert.ok(map.size > 0, "Benchmark map should not be empty");
 
@@ -95,6 +119,7 @@ test("model_benchmarks — seeds all 22 verified AA v4.3.2 benchmark rows", () =
 });
 
 test("lookupModelBenchmarkFromMap — resolves both provider-prefixed and bare IDs", () => {
+  seedDefaultModelBenchmarks();
   const map = getAllModelBenchmarksMap();
 
   // Exact bare lookup
@@ -122,6 +147,7 @@ test("lookupModelBenchmarkFromMap — resolves both provider-prefixed and bare I
 });
 
 test("model_benchmarks — JSON export & import round-trip", () => {
+  seedDefaultModelBenchmarks();
   const exportedJson = exportBenchmarksToJson();
   assert.ok(typeof exportedJson === "string", "Export should return JSON string");
 

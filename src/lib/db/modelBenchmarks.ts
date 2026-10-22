@@ -491,11 +491,6 @@ export function seedDefaultModelBenchmarks(db?: any): number {
 export function getAllModelBenchmarksMap(): Map<string, ModelBenchmarkEntry> {
   const db = getDbInstance();
   ensureTableExists(db);
-  const countRow = db.prepare("SELECT COUNT(*) as count FROM model_benchmarks").get() as
-    { count?: number } | undefined;
-  if (!countRow || countRow.count === 0) {
-    seedDefaultModelBenchmarks(db);
-  }
   const rows = db.prepare("SELECT * FROM model_benchmarks").all() as Record<string, unknown>[];
   const map = new Map<string, ModelBenchmarkEntry>();
   for (const row of rows) {
@@ -630,11 +625,6 @@ export function bulkUpsertModelBenchmarks(entries: ModelBenchmarkEntry[]): numbe
 export function listModelBenchmarks(family?: string): ModelBenchmarkEntry[] {
   const db = getDbInstance();
   ensureTableExists(db);
-  const countRow = db.prepare("SELECT COUNT(*) as count FROM model_benchmarks").get() as
-    { count?: number } | undefined;
-  if (!countRow || countRow.count === 0) {
-    seedDefaultModelBenchmarks(db);
-  }
   let sql = "SELECT * FROM model_benchmarks";
   const params: unknown[] = [];
   if (family) {
