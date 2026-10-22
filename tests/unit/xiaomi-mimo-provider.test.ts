@@ -23,7 +23,7 @@ test("xiaomi-mimo registry uses the current default base URL and MiMo V2.5 model
   }
   assert.deepEqual(
     entry.models.map((model) => model.id),
-    ["mimo-v2.5-pro", "mimo-v2.5"]
+    ["mimo-v2.6-flash", "mimo-v2.5-pro", "mimo-v2.5"]
   );
 });
 
