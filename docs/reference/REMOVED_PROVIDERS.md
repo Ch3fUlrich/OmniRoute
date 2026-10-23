@@ -53,6 +53,14 @@ the request, and that permission must be linked from the entry.
 | 2026-09-21 | `suno`            | `suno`   | `studio-api.suno.ai`, `studio-api-prod.suno.com`                  | Project owner decision (`#14224`)                                                                                                                 | [#14468](https://github.com/diegosouzapw/OmniRoute/pull/14468) | Cookie-auth provider, not an operator takedown. `studio-api.suno.ai` was suspended (503); the live host requires a Clerk JWT exchange plus a paid hCaptcha-solving dependency that OmniRoute chose not to add for one music provider. `kie/suno-v4.0` and `kie/suno-v3.5` (kie.ai-hosted) are unaffected and remain supported.                                                                                      |
 | 2026-10-10 | `opencode`        | `oc`     | `opencode.ai/zen/v1` (free tier; host shared with `opencode-zen`) | Preventive removal (project owner decision), honoring the OpenCode operator's public removal request to the upstream 9router project (2026-09-19) | [#16310](https://github.com/diegosouzapw/OmniRoute/pull/16310) | Only the keyless "OpenCode Free" provider is removed. Authenticated `opencode-zen` and `opencode-go`, all Zen catalog models and their request contracts, the OpenCode client integrations and `@omniroute/opencode-plugin*` remain. Migration `207_remove_opencode_free_provider.sql` moves legacy connections carrying an API key to Zen and cleans keyless configuration.                                        |
 
+### OpenCode Free: migration 207 operator note
+
+The move from removed provider `opencode` (alias `oc`) to `opencode-zen` is intentional.
+Connections carrying an API key or access token keep their connection id and unchanged
+credential columns; their provider becomes `opencode-zen`. Keyless rows are dropped.
+In combos, re-point model ids prefixed `opencode/` to `opencode-zen/`.
+Existing `opencode-zen` connections are unchanged.
+
 ## Adding an entry
 
 When a new takedown request arrives:

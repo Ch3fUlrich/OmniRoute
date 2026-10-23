@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **test(db):** pin migration 207's intentional `opencode`/`oc` to `opencode-zen` credential-preserving move and document keyless deletion and combo model-id updates.
+
 ### ✨ New Features
 
 - **feat(models): Model Benchmarks Catalog & Dynamic Request Routing Envelope**
