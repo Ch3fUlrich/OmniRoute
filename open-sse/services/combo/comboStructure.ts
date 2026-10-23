@@ -45,10 +45,7 @@ import type {
   ResolvedComboTarget,
   ResolvedComboUnit,
 } from "./types.ts";
-import {
-  extractRoutingEnvelope,
-  filterTargetsByRequestEnvelope,
-} from "./requestEnvelopeFilter.ts";
+import { extractRoutingEnvelope, filterTargetsByRequestEnvelope } from "./requestEnvelopeFilter.ts";
 
 /**
  * #8488 / #5240: web-cookie (and similar) providers honestly advertise
@@ -607,9 +604,14 @@ export function computeCompatRejectedTargets(
 ): ResolvedComboTarget[] {
   const requirements = deriveRequestCompatibilityRequirements(body);
   const keptSet = new Set(compatKeptTargets);
-  return rankedTargets.filter(
+  const rejected = rankedTargets.filter(
     (target) => !keptSet.has(target) && !isVisionIncompatibleTarget(target, requirements)
   );
+  // A review's cross-family exclusion is hard: those targets must not return as a fallback tier.
+  const envelope = extractRoutingEnvelope(body);
+  return envelope?.taskRole === "review"
+    ? filterTargetsByRequestEnvelope(rejected, envelope)
+    : rejected;
 }
 
 function getTargetCompatibilityFailures(
