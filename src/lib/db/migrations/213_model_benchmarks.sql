@@ -1,4 +1,4 @@
--- 194_model_benchmarks.sql
+-- 213_model_benchmarks.sql
 -- Verified model benchmark & throughput catalog (Artificial Analysis v4.3.2 metrics):
 -- intelligence index, coding/agentic scores, SWE benchmarks, verified throughput (tok/s),
 -- task cost (USD), price-cliff guardrails, and safe reasoning effort caps.

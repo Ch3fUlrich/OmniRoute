@@ -5,7 +5,7 @@
  * intelligence index, coding/agentic scores, SWE benchmarks, verified throughput (tok/s),
  * task cost (USD), price-cliff guardrails, and safe reasoning effort caps.
  *
- * @see Migration 194_model_benchmarks.sql
+ * @see Migration 213_model_benchmarks.sql
  */
 
 import { getDbInstance, rowToCamel } from "./core";
@@ -77,7 +77,7 @@ export const DEFAULT_MODEL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
     deepswe: 77.9,
     scicode: 42.0,
     verifiedTokPerS: 115,
-    costPerTaskUsd: 0.50,
+    costPerTaskUsd: 0.5,
     maxSafeEffort: "high",
     benchmarkSource: "AA-v4.3.2-2026-10",
   },
@@ -262,7 +262,7 @@ export const DEFAULT_MODEL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
     deepswe: 57.2,
     scicode: 30.5,
     verifiedTokPerS: 43,
-    costPerTaskUsd: 2.00,
+    costPerTaskUsd: 2.0,
     maxSafeEffort: "max",
     benchmarkSource: "AA-v4.3.2-2026-10",
   },
@@ -333,7 +333,7 @@ export const DEFAULT_MODEL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
     deepswe: 50.2,
     scicode: 26.5,
     verifiedTokPerS: 300,
-    costPerTaskUsd: 0.00,
+    costPerTaskUsd: 0.0,
     benchmarkSource: "AA-v4.3.2-2026-10",
   },
   {
@@ -492,8 +492,7 @@ export function getAllModelBenchmarksMap(): Map<string, ModelBenchmarkEntry> {
   const db = getDbInstance();
   ensureTableExists(db);
   const countRow = db.prepare("SELECT COUNT(*) as count FROM model_benchmarks").get() as
-    | { count?: number }
-    | undefined;
+    { count?: number } | undefined;
   if (!countRow || countRow.count === 0) {
     seedDefaultModelBenchmarks(db);
   }
@@ -537,7 +536,8 @@ export function getModelBenchmark(modelId: string): ModelBenchmarkEntry | null {
 export function upsertModelBenchmark(entry: ModelBenchmarkEntry): void {
   const db = getDbInstance();
   ensureTableExists(db);
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO model_benchmarks (
       model_id, family, aa_intelligence, coding_index, agentic_index,
       terminal_bench, deepswe, frontier_code, scicode, cyberbench,
@@ -551,7 +551,8 @@ export function upsertModelBenchmark(entry: ModelBenchmarkEntry): void {
       ?, ?, ?,
       ?, ?, ?, datetime('now')
     )
-  `).run(
+  `
+  ).run(
     entry.modelId,
     entry.family,
     entry.aaIntelligence,
@@ -630,8 +631,7 @@ export function listModelBenchmarks(family?: string): ModelBenchmarkEntry[] {
   const db = getDbInstance();
   ensureTableExists(db);
   const countRow = db.prepare("SELECT COUNT(*) as count FROM model_benchmarks").get() as
-    | { count?: number }
-    | undefined;
+    { count?: number } | undefined;
   if (!countRow || countRow.count === 0) {
     seedDefaultModelBenchmarks(db);
   }
