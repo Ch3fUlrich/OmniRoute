@@ -75,20 +75,31 @@ export function getModelIntelligenceScore(
 }
 
 function cleanExcludeFamilies(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+  return Array.isArray(value)
+    ? value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    : [];
+}
+
+function isReviewRole(role: unknown): boolean {
+  return typeof role === "string" && role.trim().toLowerCase() === "review";
 }
 
 export function extractRoutingEnvelope(
   body?: Record<string, unknown> | null,
   headers?: Record<string, string | undefined> | Headers | null
 ): RequestRoutingEnvelope | null {
-  const fallback = body?.headers ?? body?._omnirouteHeaders;
-  const isPlainFallback =
-    fallback !== null &&
-    typeof fallback === "object" &&
-    (Object.getPrototypeOf(fallback) === Object.prototype || Object.getPrototypeOf(fallback) === null);
+  const fallback = [body?.headers, body?._omnirouteHeaders].find(
+    (candidate) =>
+      candidate !== null &&
+      typeof candidate === "object" &&
+      (Object.getPrototypeOf(candidate) === Object.prototype ||
+        Object.getPrototypeOf(candidate) === null)
+  );
   const effectiveHeaders =
-    headers ?? (isPlainFallback ? (fallback as Record<string, string | undefined>) : null);
+    headers ?? (fallback as Record<string, string | undefined> | undefined) ?? null;
   const fromHeaders = effectiveHeaders ? extractRequestOverrides(effectiveHeaders) : {};
 
   let fromBody: Partial<RequestRoutingEnvelope> = {};
@@ -102,10 +113,12 @@ export function extractRoutingEnvelope(
     fromBody = body._omnirouteEnvelope as Partial<RequestRoutingEnvelope>;
   }
 
-  // Body wins per defined field; excludeFamilies are additive and never cancelled.
+  // Body wins per defined and non-null field; excludeFamilies are additive and never cancelled.
   const envelope: RequestRoutingEnvelope = {
     ...fromHeaders,
-    ...fromBody,
+    ...Object.fromEntries(
+      Object.entries(fromBody).filter(([, value]) => value !== undefined && value !== null)
+    ),
   };
 
   const combinedExclude = new Set<string>([
@@ -134,7 +147,7 @@ export function shouldBypassSessionStickiness(
   envelope: RequestRoutingEnvelope | null | undefined
 ): boolean {
   if (!envelope) return false;
-  return envelope.taskRole === "review" || (envelope.excludeFamilies?.length ?? 0) > 0;
+  return isReviewRole(envelope.taskRole) || (envelope.excludeFamilies?.length ?? 0) > 0;
 }
 
 export function isGatedCodexTarget(modelStr: string, provider?: string | null): boolean {
@@ -155,7 +168,7 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
 
   // 0. Codex ACP luna-only gating (reject cxa/gpt-6-astra-* and cxa/gpt-6-sol-*)
   const ungated = targets.filter((t) => !isGatedCodexTarget(t.modelStr, t.provider));
-  let filtered = ungated.length > 0 || envelope.taskRole === "review" ? ungated : targets;
+  let filtered = ungated.length > 0 || isReviewRole(envelope.taskRole) ? ungated : targets;
 
   // 1. Hard Cross-Family Exclusion
   const excluded = new Set<string>(
@@ -172,12 +185,12 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
     }
   }
 
-  if (envelope.taskRole === "review" && excluded.size === 0) return [];
+  if (isReviewRole(envelope.taskRole) && excluded.size === 0) return [];
 
   if (excluded.size > 0) {
     const nonExcluded = filtered.filter((target) => {
       const family = detectModelFamily(target.modelStr);
-      if (envelope.taskRole === "review") {
+      if (isReviewRole(envelope.taskRole)) {
         // Fail-closed on review: unknown family cannot prove cross-family independence
         if (!family) return false;
         const famLower = family.toLowerCase();
@@ -191,7 +204,7 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
       if (famLower.startsWith("claude") && excluded.has("claude")) return false;
       return true;
     });
-    if (envelope.taskRole === "review") {
+    if (isReviewRole(envelope.taskRole)) {
       filtered = nonExcluded;
     } else {
       filtered = nonExcluded.length > 0 ? nonExcluded : filtered;

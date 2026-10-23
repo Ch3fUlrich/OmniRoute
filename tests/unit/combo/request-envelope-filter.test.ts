@@ -154,6 +154,36 @@ describe("extractRequestOverrides", () => {
 });
 
 describe("Cross-family review enforcement with l2-worker combo", () => {
+  it("fails closed for review with blank exclusions and no author", () => {
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope([{ modelStr: "glm-5.2-max" }], {
+        taskRole: "review",
+        excludeFamilies: ["", " "],
+      }),
+      []
+    );
+  });
+
+  it("excludes a recognized review author without explicit exclusions", () => {
+    const targets = [{ modelStr: "glm-5.2-max" }, { modelStr: "kimi-k3-max" }];
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope(targets, {
+        taskRole: "review",
+        authorModel: "glm-5.2-max",
+      }),
+      [targets[1]]
+    );
+  });
+
+  it("treats mixed-case padded review roles consistently", () => {
+    const envelope = { taskRole: " Review " } as unknown as RequestRoutingEnvelope;
+    assert.equal(shouldBypassSessionStickiness(envelope), true);
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope([{ modelStr: "glm-5.2-max" }], envelope),
+      []
+    );
+  });
+
   it("fails closed for review with an unknown author and no exclusions", () => {
     const targets = [{ modelStr: "glm-5.2-max" }];
     assert.deepEqual(
@@ -462,6 +492,44 @@ describe("Price-cliff guardrail", () => {
 });
 
 describe("extractRoutingEnvelope & comboStructure integration", () => {
+  it("ignores a Headers instance in body.headers", () => {
+    assert.equal(
+      extractRoutingEnvelope({ headers: new Headers({ "x-omniroute-task-role": "review" }) }),
+      null
+    );
+  });
+
+  it("preserves header review roles when body fields are null or undefined", () => {
+    for (const taskRole of [null, undefined]) {
+      assert.equal(
+        extractRoutingEnvelope(
+          { _omnirouteEnvelope: { taskRole } },
+          { "x-omniroute-task-role": "review" }
+        )?.taskRole,
+        "review"
+      );
+    }
+  });
+
+  it("uses the first plain body header fallback after an invalid candidate", () => {
+    assert.equal(
+      extractRoutingEnvelope({
+        headers: "x",
+        _omnirouteHeaders: { "x-omniroute-task-role": "review" },
+      })?.taskRole,
+      "review"
+    );
+  });
+
+  it("trims exclusions and drops blank entries", () => {
+    assert.deepEqual(
+      extractRoutingEnvelope({
+        _omnirouteEnvelope: { excludeFamilies: ["", " ", " glm "] },
+      })?.excludeFamilies,
+      ["glm"]
+    );
+  });
+
   it("ignores non-plain body header fallbacks without throwing", () => {
     const baseline = { _omnirouteEnvelope: { taskRole: "implement" } };
     for (const key of ["headers", "_omnirouteHeaders"]) {
