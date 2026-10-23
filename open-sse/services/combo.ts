@@ -12,10 +12,31 @@ import { runComboWithSafetyLatch } from "./combo/safetyStopLatch.ts";
 
 // Carry only allowlisted routing controls: raw Headers are neither body data nor cloneable.
 export function attachRequestRoutingEnvelope(body: unknown, requestHeaders: unknown): void {
-  if (requestHeaders && body && typeof body === "object" && !("_omnirouteEnvelope" in body)) {
+  if (requestHeaders && body && typeof body === "object") {
     const envelope = extractRequestOverrides(requestHeaders);
     if (Object.keys(envelope).length > 0) {
-      (body as Record<string, unknown>)._omnirouteEnvelope = envelope;
+      const record = body as Record<string, unknown>;
+      const existing = record._omnirouteEnvelope;
+      const isPlainObject =
+        existing !== null &&
+        typeof existing === "object" &&
+        (Object.getPrototypeOf(existing) === Object.prototype ||
+          Object.getPrototypeOf(existing) === null);
+      if (isPlainObject) {
+        const fromBody = existing as Record<string, unknown>;
+        const merged = { ...envelope, ...fromBody };
+        const excludeFamilies = [
+          ...new Set([
+            ...(envelope.excludeFamilies ?? []),
+            ...(Array.isArray(fromBody.excludeFamilies) ? fromBody.excludeFamilies : []),
+          ]),
+        ];
+        if (excludeFamilies.length > 0) merged.excludeFamilies = excludeFamilies;
+        else delete merged.excludeFamilies;
+        record._omnirouteEnvelope = merged;
+      } else {
+        record._omnirouteEnvelope = envelope;
+      }
     }
   }
 }
