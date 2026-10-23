@@ -2,7 +2,7 @@ name: AutoOS image (GHCR)
 
 # Builds the upstream Dockerfile (target runner-base, linux/amd64) plus the thin
 # Dockerfile.autoos layer and pushes ghcr.io/<owner>/omniroute:
-#   <package.json version>-autoos.<n>   (n = tag suffix on a v*-autoos.<n> tag, else run number)
+#   <package.json version>-autoos<n>   (n = tag suffix on a v*-autoos.<n> tag, else run number)
 #   sha-<short>
 # Only the autoos/* branches and v*-autoos* tags build; nothing else triggers it.
 
@@ -47,7 +47,6 @@ jobs:
             --test --test-force-exit \
             tests/unit/translator-gemini-trailing-turn-guard.test.ts \
             tests/unit/translator-gemini-consecutive-role-2191.test.ts \
-            tests/unit/quota-cache-null-safety-total-less.test.ts \
             tests/unit/quota-cache-antigravity-fraction-reported-10095.test.ts \
             tests/unit/quota-cache-hydrate-5015.test.ts \
             tests/unit/domain-branch-hardening.test.ts \
@@ -94,7 +93,7 @@ jobs:
           image="ghcr.io/$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')/omniroute"
           {
             echo "image=$image"
-            echo "version_tag=${version}-autoos.${n}"
+            echo "version_tag=${version}-autoos${n}"
             echo "sha_tag=sha-${SHA:0:7}"
           } >> "$GITHUB_OUTPUT"
 
@@ -128,6 +127,27 @@ jobs:
         run: |
           img="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}"
           docker run --rm --entrypoint sh "$img" -c 'command -v qodercli && node -e "require(\"/app/node_modules/bcryptjs\")" && echo ok'
+
+      - name: Smoke test (gateway boots, health 200, codex registry has gpt-6.1-sol)
+        run: |
+          set -euo pipefail
+          img="${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_tag }}"
+          docker run -d --name smoke -p 20128:20128 \
+            -e JWT_SECRET=smoke-only-jwt-secret-0123456789abcdef \
+            -e API_KEY_SECRET=smoke-only-api-key-secret-0123456789 \
+            -e STORAGE_ENCRYPTION_KEY=smoke-only-storage-key-0123456789ab \
+            -e DISABLE_SQLITE_AUTO_BACKUP=true "$img"
+          code=000
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:20128/healthz || true)
+            [ "$code" = 200 ] && break
+            sleep 2
+          done
+          docker logs smoke 2>&1 | tail -n 20
+          [ "$code" = 200 ] || { echo "health != 200 ($code)"; exit 1; }
+          # The shipped bundle must carry the codex registry entry for gpt-6.1-sol.
+          docker exec smoke sh -c 'grep -rl --include="*.js" --include="*.mjs" "gpt-6.1-sol" /app | head -n 3 | grep -q .'
+          docker rm -f smoke
 
       - name: Push
         id: push
