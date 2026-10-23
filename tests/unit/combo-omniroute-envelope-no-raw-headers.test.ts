@@ -53,6 +53,7 @@ test("combo carries only parsed plain routing overrides, never raw credentials",
     })
   );
   assert.deepEqual(body._omnirouteEnvelope, { taskRole: "review" });
+  assert.doesNotThrow(() => structuredClone(body));
   assertNoRawHeaders(body);
   assert.deepEqual(structuredClone(body), body);
   assert.equal("_omnirouteHeaders" in body, false);
@@ -62,12 +63,15 @@ test("combo preserves an existing envelope and omits empty overrides", () => {
   const envelope = { taskRole: "implement" };
   const body = { _omnirouteEnvelope: envelope };
   combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-task-role": "review" }));
+  assert.doesNotThrow(() => structuredClone(body));
   assert.deepEqual(body._omnirouteEnvelope, envelope);
   assert.notEqual(body._omnirouteEnvelope, envelope);
   const empty = {};
   combo.attachRequestRoutingEnvelope(empty, new Headers({ authorization: "Bearer x" }));
+  assert.doesNotThrow(() => structuredClone(empty));
   assert.deepEqual(empty, {});
   assert.doesNotThrow(() => combo.attachRequestRoutingEnvelope(null, new Headers()));
+  assert.doesNotThrow(() => structuredClone(null));
 });
 
 test("combo merges author controls with a body review envelope without mutation", () => {
@@ -87,6 +91,7 @@ test("combo merges author controls with a body review envelope without mutation"
   });
   assert.notEqual(body._omnirouteEnvelope, envelope);
   assert.deepEqual(envelope, { taskRole: "review" });
+  assert.doesNotThrow(() => structuredClone(body));
   assertNoRawHeaders(body);
 });
 
@@ -94,6 +99,7 @@ test("combo unions exclusions without duplicates or mutating the original list",
   const envelope = { excludeFamilies: ["glm", "kimi"] };
   const body = { _omnirouteEnvelope: envelope };
   combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-exclude-family": "glm" }));
+  assert.doesNotThrow(() => structuredClone(body));
   assert.deepEqual(body._omnirouteEnvelope.excludeFamilies, ["glm", "kimi"]);
   assert.notEqual(body._omnirouteEnvelope, envelope);
   assert.notEqual(body._omnirouteEnvelope.excludeFamilies, envelope.excludeFamilies);
@@ -101,14 +107,45 @@ test("combo unions exclusions without duplicates or mutating the original list",
 });
 
 test("combo replaces non-plain envelopes and omits an empty exclusion union", () => {
-  for (const envelope of [null, [], "review", new Date(0)]) {
+  for (const envelope of [null, [], "review", new Date(0), new Headers()]) {
     const body = { _omnirouteEnvelope: envelope };
     combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-task-role": "review" }));
+    assert.doesNotThrow(() => structuredClone(body));
     assert.deepEqual(body._omnirouteEnvelope, { taskRole: "review" });
   }
   const body = { _omnirouteEnvelope: { excludeFamilies: [] } };
   combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-task-role": "review" }));
+  assert.doesNotThrow(() => structuredClone(body));
   assert.deepEqual(body._omnirouteEnvelope, { taskRole: "review" });
+});
+
+test("combo keeps header values when body overrides are undefined", () => {
+  const body = { _omnirouteEnvelope: { taskRole: undefined } };
+  combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-task-role": "review" }));
+  assert.doesNotThrow(() => structuredClone(body));
+  assert.deepEqual(body._omnirouteEnvelope, { taskRole: "review" });
+});
+
+test("combo ignores non-array body exclusions without cancelling header exclusions", () => {
+  for (const excludeFamilies of [null, "kimi", {}, 1]) {
+    const body = { _omnirouteEnvelope: { excludeFamilies } };
+    assert.doesNotThrow(() =>
+      combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-exclude-family": "glm" }))
+    );
+    assert.doesNotThrow(() => structuredClone(body));
+    assert.deepEqual(body._omnirouteEnvelope, { excludeFamilies: ["glm"] });
+  }
+});
+
+test("combo drops non-plain envelopes even without header overrides", () => {
+  for (const envelope of [new Headers(), new Date(0), [], "review", null]) {
+    for (const headers of [new Headers(), undefined]) {
+      const body = { _omnirouteEnvelope: envelope };
+      combo.attachRequestRoutingEnvelope(body, headers);
+      assert.doesNotThrow(() => structuredClone(body));
+      assert.equal("_omnirouteEnvelope" in body, false);
+    }
+  }
 });
 
 test("raw header assertion rejects nested credentials and Headers", () => {

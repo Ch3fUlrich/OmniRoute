@@ -12,22 +12,26 @@ import { runComboWithSafetyLatch } from "./combo/safetyStopLatch.ts";
 
 // Carry only allowlisted routing controls: raw Headers are neither body data nor cloneable.
 export function attachRequestRoutingEnvelope(body: unknown, requestHeaders: unknown): void {
-  if (requestHeaders && body && typeof body === "object") {
+  if (body && typeof body === "object") {
     const envelope = extractRequestOverrides(requestHeaders);
+    const record = body as Record<string, unknown>;
+    const existing = record._omnirouteEnvelope;
+    const isPlainObject =
+      existing !== null &&
+      typeof existing === "object" &&
+      (Object.getPrototypeOf(existing) === Object.prototype ||
+        Object.getPrototypeOf(existing) === null);
     if (Object.keys(envelope).length > 0) {
-      const record = body as Record<string, unknown>;
-      const existing = record._omnirouteEnvelope;
-      const isPlainObject =
-        existing !== null &&
-        typeof existing === "object" &&
-        (Object.getPrototypeOf(existing) === Object.prototype ||
-          Object.getPrototypeOf(existing) === null);
       if (isPlainObject) {
         const fromBody = existing as Record<string, unknown>;
-        const merged = { ...envelope, ...fromBody };
+        const merged: Record<string, unknown> = { ...envelope };
+        for (const [key, value] of Object.entries(fromBody)) {
+          if (value !== undefined) merged[key] = value;
+        }
+        // Exclusions are additive: header families come first; the body cannot cancel them.
         const excludeFamilies = [
           ...new Set([
-            ...(envelope.excludeFamilies ?? []),
+            ...(Array.isArray(envelope.excludeFamilies) ? envelope.excludeFamilies : []),
             ...(Array.isArray(fromBody.excludeFamilies) ? fromBody.excludeFamilies : []),
           ]),
         ];
@@ -37,6 +41,8 @@ export function attachRequestRoutingEnvelope(body: unknown, requestHeaders: unkn
       } else {
         record._omnirouteEnvelope = envelope;
       }
+    } else if (!isPlainObject) {
+      delete record._omnirouteEnvelope;
     }
   }
 }
