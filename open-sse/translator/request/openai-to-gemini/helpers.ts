@@ -293,7 +293,10 @@ export function sanitizeGeminiPartFunctionResponse(part: GeminiPart): GeminiPart
 //  3. refill an emptied array with one synthetic user turn.
 // Tolerant of malformed bodies: non-array input is treated as empty, null / non-object
 // entries and roles other than user/model are dropped, `parts` is read only when an array.
-export function guardGeminiTrailingTurn(contents: unknown): GeminiContent[] {
+export function guardGeminiTrailingTurn(
+  contents: unknown,
+  options: { splitMixedTurns?: boolean; popTrailingModel?: boolean } = {}
+): GeminiContent[] {
   const out: GeminiContent[] = [];
   for (const entry of Array.isArray(contents) ? contents : []) {
     if (!entry || typeof entry !== "object") continue;
@@ -306,7 +309,7 @@ export function guardGeminiTrailingTurn(contents: unknown): GeminiContent[] {
     const parts: GeminiPart[] = Array.isArray(c.parts) ? c.parts : [];
     const responses = parts.filter((p) => p && p.functionResponse);
     const others = parts.filter((p) => !p || !p.functionResponse);
-    if (responses.length && others.length) {
+    if (options.splitMixedTurns !== false && responses.length && others.length) {
       out.push({ ...c, parts: responses });
       out.push({ role: "model", parts: [{ text: "Noted." }] });
       out.push({ ...c, parts: others });
@@ -314,7 +317,9 @@ export function guardGeminiTrailingTurn(contents: unknown): GeminiContent[] {
       out.push(c);
     }
   }
-  while (out.length && out[out.length - 1].role === "model") out.pop();
+  if (options.popTrailingModel !== false) {
+    while (out.length && out[out.length - 1].role === "model") out.pop();
+  }
   if (!out.length) out.push({ role: "user", parts: [{ text: "Continue." }] });
   return out;
 }

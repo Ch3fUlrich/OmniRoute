@@ -211,9 +211,11 @@ type GeminiBaseOptions = {
   // functions are declared. Plain Gemini (AI Studio / Gemini CLI) keeps the
   // historical promotion, so it stays off unless the Cloud Code caller sets it.
   keepMixedGoogleSearchCallable?: boolean;
-  // Antigravity/Cloud Code accepts a user turn that mixes functionResponse with text, and
-  // upstream orders them per model (#17256); the Vertex turn-shape guard must not split it.
-  skipVertexTurnGuard?: boolean;
+  // Antigravity/Cloud Code accepts a user turn that mixes functionResponse with text and
+  // upstream orders them per model (#17256), and a still-in-flight trailing functionCall
+  // turn must survive (#7752). The Vertex split and trailing-model pop are therefore
+  // skipped; the empty-contents refill still runs.
+  preserveCloudCodeTurns?: boolean;
 };
 
 // Core: Convert OpenAI request to Gemini format (base for all variants)
@@ -708,9 +710,10 @@ function openaiToGeminiBase(
     result.contents = stripTrailingGeminiModelTurns(result.contents);
   }
   // Vertex turn-shape rejections (mixed functionResponse turn, model tail, empty refill).
-  if (!baseOptions.skipVertexTurnGuard) {
-    result.contents = guardGeminiTrailingTurn(result.contents);
-  }
+  result.contents = guardGeminiTrailingTurn(result.contents, {
+    splitMixedTurns: !baseOptions.preserveCloudCodeTurns,
+    popTrailingModel: !baseOptions.preserveCloudCodeTurns,
+  });
   // Signatures must be resolved using client IDs before assigning unique wire IDs (#15312).
   result.contents = normalizeGeminiToolCallIds(result.contents);
 
@@ -848,7 +851,7 @@ export function openaiToCloudCodeGeminiRequest(
       signaturelessToolCallMode: options.signaturelessToolCallMode,
       supportsSignatureBypass: true,
     },
-    { keepMixedGoogleSearchCallable: true, skipVertexTurnGuard: true }
+    { keepMixedGoogleSearchCallable: true, preserveCloudCodeTurns: true }
   );
 
   // Standard Gemini requests retain the historical all-OFF defaults, but Cloud Code
