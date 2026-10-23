@@ -154,6 +154,45 @@ describe("extractRequestOverrides", () => {
 });
 
 describe("Cross-family review enforcement with l2-worker combo", () => {
+  it("fails closed for review with an unknown author and no exclusions", () => {
+    const targets = [{ modelStr: "glm-5.2-max" }];
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope(targets, {
+        taskRole: "review",
+        authorModel: "totally-unknown-model-xyz",
+      }),
+      []
+    );
+  });
+
+  it("fails closed for review with no author and no exclusions", () => {
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope([{ modelStr: "glm-5.2-max" }], { taskRole: "review" }),
+      []
+    );
+  });
+
+  it("filters review normally with an unknown author and explicit exclusions", () => {
+    const targets = [{ modelStr: "glm-5.2-max" }, { modelStr: "kimi-k3-max" }];
+    assert.deepEqual(
+      filterTargetsByRequestEnvelope(targets, {
+        taskRole: "review",
+        authorModel: "totally-unknown-model-xyz",
+        excludeFamilies: ["glm"],
+      }),
+      [targets[1]]
+    );
+  });
+
+  it("keeps non-review roles fail-open without a recognized author", () => {
+    const targets = [{ modelStr: "glm-5.2-max" }];
+    for (const taskRole of ["implement", "orchestrate", "drive"] as const) {
+      for (const authorModel of [undefined, "totally-unknown-model-xyz"]) {
+        assert.deepEqual(filterTargetsByRequestEnvelope(targets, { taskRole, authorModel }), targets);
+      }
+    }
+  });
+
   const l2WorkerTargets = [
     { modelStr: "opencode-go/muse-spark-1.3-contributor", provider: "opencode-go" },
     { modelStr: "mimo/mimo-v2.6-pro", provider: "mimo" },
@@ -298,7 +337,7 @@ describe("shouldBypassSessionStickiness", () => {
       "general",
       DEFAULT_WEIGHTS,
       null,
-      { taskRole: "review" }
+      { taskRole: "review", excludeFamilies: ["glm"] }
     );
     // Under review envelope, stickiness is bypassed: contextAffinity is 0
     assert.equal(scoredReview[0].factors.contextAffinity, 0);
@@ -423,6 +462,51 @@ describe("Price-cliff guardrail", () => {
 });
 
 describe("extractRoutingEnvelope & comboStructure integration", () => {
+  it("ignores non-plain body header fallbacks without throwing", () => {
+    const baseline = { _omnirouteEnvelope: { taskRole: "implement" } };
+    for (const key of ["headers", "_omnirouteHeaders"]) {
+      for (const value of ["authorization: x", [], 5, new Date(0)]) {
+        assert.deepEqual(
+          extractRoutingEnvelope({ ...baseline, [key]: value }),
+          extractRoutingEnvelope(baseline)
+        );
+      }
+    }
+  });
+
+  it("accepts plain body header fallbacks and explicit Headers instances", () => {
+    const headers = { "x-omniroute-task-role": "implement" };
+    for (const value of [headers, Object.assign(Object.create(null), headers)]) {
+      assert.equal(extractRoutingEnvelope({ headers: value })?.taskRole, "implement");
+      assert.equal(extractRoutingEnvelope({ _omnirouteHeaders: value })?.taskRole, "implement");
+    }
+    assert.equal(extractRoutingEnvelope(null, new Headers(headers))?.taskRole, "implement");
+  });
+
+  for (const [label, value, expected] of [
+    ["string", "kimi", []],
+    ["object", {}, []],
+    ["number", 5, []],
+    ["mixed array", ["glm", 1, null, {}], ["glm"]],
+  ] as const) {
+    it(`cleans body excludeFamilies supplied as ${label}`, () => {
+      const body = { _omnirouteEnvelope: { taskRole: "implement", excludeFamilies: value } };
+      assert.deepEqual(extractRoutingEnvelope(body)?.excludeFamilies ?? [], expected);
+      assert.deepEqual(
+        extractRoutingEnvelope(body, { "x-omniroute-exclude-family": "kimi" })?.excludeFamilies,
+        ["kimi", ...expected]
+      );
+    });
+  }
+
+  it("cleans non-string exclusions in directly supplied envelopes", () => {
+    const targets = [{ modelStr: "glm-5.2-max" }, { modelStr: "kimi-k3-max" }];
+    const envelope = {
+      excludeFamilies: ["GLM", 1, null, {}],
+    } as unknown as RequestRoutingEnvelope;
+    assert.deepEqual(filterTargetsByRequestEnvelope(targets, envelope), [targets[1]]);
+  });
+
   it("extracts a context-only header envelope and preserves body precedence", () => {
     const headers = { "x-omniroute-required-context": "128k" };
     assert.deepEqual(extractRoutingEnvelope(null, headers), { requiredContextTokens: 128000 });

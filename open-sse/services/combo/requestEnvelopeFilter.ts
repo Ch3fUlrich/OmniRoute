@@ -74,15 +74,21 @@ export function getModelIntelligenceScore(
   return null;
 }
 
+function cleanExcludeFamilies(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
 export function extractRoutingEnvelope(
   body?: Record<string, unknown> | null,
   headers?: Record<string, string | undefined> | Headers | null
 ): RequestRoutingEnvelope | null {
+  const fallback = body?.headers ?? body?._omnirouteHeaders;
+  const isPlainFallback =
+    fallback !== null &&
+    typeof fallback === "object" &&
+    (Object.getPrototypeOf(fallback) === Object.prototype || Object.getPrototypeOf(fallback) === null);
   const effectiveHeaders =
-    headers ??
-    ((body && typeof body === "object" && ("headers" in body || "_omnirouteHeaders" in body))
-      ? (body.headers ?? body._omnirouteHeaders)
-      : null);
+    headers ?? (isPlainFallback ? (fallback as Record<string, string | undefined>) : null);
   const fromHeaders = effectiveHeaders ? extractRequestOverrides(effectiveHeaders) : {};
 
   let fromBody: Partial<RequestRoutingEnvelope> = {};
@@ -96,17 +102,20 @@ export function extractRoutingEnvelope(
     fromBody = body._omnirouteEnvelope as Partial<RequestRoutingEnvelope>;
   }
 
+  // Body wins per defined field; excludeFamilies are additive and never cancelled.
   const envelope: RequestRoutingEnvelope = {
     ...fromHeaders,
     ...fromBody,
   };
 
   const combinedExclude = new Set<string>([
-    ...(fromHeaders.excludeFamilies ?? []),
-    ...(fromBody.excludeFamilies ?? []),
+    ...cleanExcludeFamilies(fromHeaders.excludeFamilies),
+    ...cleanExcludeFamilies(fromBody.excludeFamilies),
   ]);
   if (combinedExclude.size > 0) {
     envelope.excludeFamilies = Array.from(combinedExclude);
+  } else {
+    delete envelope.excludeFamilies;
   }
 
   const hasAnyField =
@@ -150,7 +159,7 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
 
   // 1. Hard Cross-Family Exclusion
   const excluded = new Set<string>(
-    (envelope.excludeFamilies ?? []).map((f) => f.toLowerCase())
+    cleanExcludeFamilies(envelope.excludeFamilies).map((f) => f.toLowerCase())
   );
   for (const f of Array.from(excluded)) {
     if (f.startsWith("claude")) excluded.add("claude");
@@ -162,6 +171,8 @@ export function filterTargetsByRequestEnvelope<T extends { modelStr: string; pro
       if (authorFamily.startsWith("claude")) excluded.add("claude");
     }
   }
+
+  if (envelope.taskRole === "review" && excluded.size === 0) return [];
 
   if (excluded.size > 0) {
     const nonExcluded = filtered.filter((target) => {
