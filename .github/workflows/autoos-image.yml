@@ -107,7 +107,11 @@ jobs:
         env:
           DOCKER_BUILDKIT: "1"
         run: |
+          # The builder stage default V8 heap (OMNIROUTE_BUILD_MEMORY_MB=6144) OOMs on v3.8.53
+          # (Ineffective mark-compacts near heap limit). Same override as upstream docker-publish.yml
+          # (12288 on the same 16 GB runner class); page-data workers stay at the Dockerfile default.
           docker build --target runner-base --platform linux/amd64 \
+            --build-arg OMNIROUTE_BUILD_MEMORY_MB=12288 \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             -t omniroute-upstream-build:local -f Dockerfile .
 
