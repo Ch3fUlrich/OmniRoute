@@ -119,3 +119,8 @@ test("openaiToGeminiRequest: tool result followed by user text ends on user with
   assert.equal(contents[contents.length - 1].role, "user");
   for (let i = 1; i < contents.length; i++) assert.notEqual(contents[i].role, contents[i - 1].role);
 });
+
+test("primitive parts in a trailing model turn do not throw and the turn is popped", () => {
+  const out = guardGeminiTrailingTurn([user({ text: "a" }), { role: "model", parts: ["hi", 42] }]);
+  assert.deepEqual(out, [user({ text: "a" })]);
+});
