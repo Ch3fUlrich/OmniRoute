@@ -107,7 +107,7 @@ test("Database & Catalog Pipeline: seeds, queries, rankings, and JSON round-trip
 test("End-to-End handleComboChat: Implementation request with minIntelligence & ACP gating", async () => {
   const recordedDispatches: Array<{ modelStr: string; body: unknown }> = [];
 
-  const handleSingleModelMock = async (body: any, modelStr: string) => {
+  const handleSingleModelMock = async (body: Record<string, unknown>, modelStr: string) => {
     recordedDispatches.push({ modelStr, body });
     return new Response(
       JSON.stringify({
@@ -147,9 +147,9 @@ test("End-to-End handleComboChat: Implementation request with minIntelligence & 
       messages: [{ role: "user", content: "Implement the feature specification" }],
     },
     combo: l2WorkerCombo,
-    handleSingleModel: handleSingleModelMock as any,
+    handleSingleModel: handleSingleModelMock,
     isModelAvailable: async () => true,
-    log: log as any,
+    log,
     requestHeaders: {
       "x-omniroute-task-role": "implement",
       "x-omniroute-min-intelligence": "45.8",
@@ -165,7 +165,7 @@ test("End-to-End handleComboChat: Implementation request with minIntelligence & 
 test("End-to-End handleComboChat: Cross-Family Review Seat 1 on same l2-worker combo", async () => {
   const recordedDispatches: Array<{ modelStr: string; body: unknown }> = [];
 
-  const handleSingleModelMock = async (body: any, modelStr: string) => {
+  const handleSingleModelMock = async (body: Record<string, unknown>, modelStr: string) => {
     recordedDispatches.push({ modelStr, body });
     return new Response(
       JSON.stringify({
@@ -205,9 +205,9 @@ test("End-to-End handleComboChat: Cross-Family Review Seat 1 on same l2-worker c
       messages: [{ role: "user", content: "Review code changes" }],
     },
     combo: l2WorkerCombo,
-    handleSingleModel: handleSingleModelMock as any,
+    handleSingleModel: handleSingleModelMock,
     isModelAvailable: async () => true,
-    log: log as any,
+    log,
     requestHeaders: {
       "x-omniroute-task-role": "review",
       "x-omniroute-author-model": "agy/claude-sonnet-5-5-high",
@@ -224,7 +224,7 @@ test("End-to-End handleComboChat: Cross-Family Review Seat 1 on same l2-worker c
 test("End-to-End handleComboChat: Cross-Family Review Seat 2 on same l2-worker combo (exclude claude & mimo)", async () => {
   const recordedDispatches: Array<{ modelStr: string; body: unknown }> = [];
 
-  const handleSingleModelMock = async (body: any, modelStr: string) => {
+  const handleSingleModelMock = async (body: Record<string, unknown>, modelStr: string) => {
     recordedDispatches.push({ modelStr, body });
     return new Response(
       JSON.stringify({
@@ -264,9 +264,9 @@ test("End-to-End handleComboChat: Cross-Family Review Seat 2 on same l2-worker c
       messages: [{ role: "user", content: "Second review seat" }],
     },
     combo: l2WorkerCombo,
-    handleSingleModel: handleSingleModelMock as any,
+    handleSingleModel: handleSingleModelMock,
     isModelAvailable: async () => true,
-    log: log as any,
+    log,
     requestHeaders: {
       "x-omniroute-task-role": "review",
       "x-omniroute-author-model": "agy/claude-sonnet-5-5-high",
@@ -309,7 +309,7 @@ test("Auto-Combo 16-Factor Strategy with Review Envelope: zeroes out contextAffi
     },
   ];
 
-  const mockCandidates = [
+  const mockCandidates: Parameters<typeof scoreAutoTargets>[1] = [
     {
       stepId: "step-1",
       executionKey: "mimo:mimo-v2.6-pro",
@@ -343,8 +343,8 @@ test("Auto-Combo 16-Factor Strategy with Review Envelope: zeroes out contextAffi
   ];
 
   const scoredNormal = scoreAutoTargets(
-    mockTargets as any,
-    mockCandidates as any,
+    mockTargets as unknown as Parameters<typeof scoreAutoTargets>[0],
+    mockCandidates,
     "general",
     DEFAULT_WEIGHTS,
     null,
@@ -353,8 +353,8 @@ test("Auto-Combo 16-Factor Strategy with Review Envelope: zeroes out contextAffi
   assert.equal(scoredNormal[0].factors.contextAffinity, 0.95);
 
   const scoredReview = scoreAutoTargets(
-    mockTargets as any,
-    mockCandidates as any,
+    mockTargets as unknown as Parameters<typeof scoreAutoTargets>[0],
+    mockCandidates,
     "general",
     DEFAULT_WEIGHTS,
     null,
@@ -377,11 +377,11 @@ test("Fail-Closed Review Guard: refuses self-review when all combo targets belon
       messages: [{ role: "user", content: "Review my code" }],
     },
     combo: claudeOnlyCombo,
-    handleSingleModel: (async () => {
+    handleSingleModel: async () => {
       assert.fail("Should never dispatch to a model when self-review is refused");
-    }) as any,
+    },
     isModelAvailable: async () => true,
-    log: log as any,
+    log,
     requestHeaders: {
       "x-omniroute-task-role": "review",
       "x-omniroute-author-model": "agy/claude-sonnet-5-5-high",
