@@ -320,7 +320,7 @@ export function guardGeminiTrailingTurn(
   if (options.popTrailingModel !== false) {
     while (out.length && out[out.length - 1].role === "model") {
       const parts = out[out.length - 1].parts;
-      if (Array.isArray(parts) && parts.some((p) => p != null && "functionCall" in p)) break;
+      if (Array.isArray(parts) && parts.some((p) => p && typeof p === "object" && "functionCall" in p)) break;
       out.pop();
     }
   }
