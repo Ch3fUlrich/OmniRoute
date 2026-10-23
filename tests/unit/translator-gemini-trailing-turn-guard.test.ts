@@ -22,6 +22,25 @@ test("model tail behind a user history is popped", () => {
   assert.deepEqual(out, [user({ text: "a" })]);
 });
 
+test("trailing model functionCall turn is untouched", () => {
+  const contents = [user({ text: "a" }), model({ functionCall: { name: "f" } })];
+  assert.deepEqual(guardGeminiTrailingTurn(contents), contents);
+});
+
+test("model text tail is popped only up to a functionCall turn", () => {
+  const contents = [user({ text: "a" }), model({ functionCall: { name: "f" } })];
+  assert.deepEqual(guardGeminiTrailingTurn([...contents, model({ text: "b" })]), contents);
+});
+
+test("trailing functionCall turn preserves the preceding model text turn", () => {
+  const contents = [
+    user({ text: "a" }),
+    model({ text: "b" }),
+    model({ functionCall: { name: "f" } }),
+  ];
+  assert.deepEqual(guardGeminiTrailingTurn(contents), contents);
+});
+
 test("several trailing model turns and an all-model history", () => {
   assert.deepEqual(guardGeminiTrailingTurn([user({ text: "a" }), model({ text: "b" }), model({ text: "c" })]), [
     user({ text: "a" }),

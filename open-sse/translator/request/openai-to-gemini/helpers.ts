@@ -289,7 +289,7 @@ export function sanitizeGeminiPartFunctionResponse(part: GeminiPart): GeminiPart
 //  1. split every mixed user turn into user[functionResponse parts] / model["Noted."] /
 //     user[other parts] — the synthetic model turn keeps the alternation valid, so the
 //     gateway's own same-role merge would not re-fuse the pieces;
-//  2. pop any trailing model turns;
+//  2. pop trailing model turns only until a functionCall turn, preserving tool calls;
 //  3. refill an emptied array with one synthetic user turn.
 // Tolerant of malformed bodies: non-array input is treated as empty, null / non-object
 // entries and roles other than user/model are dropped, `parts` is read only when an array.
@@ -318,7 +318,11 @@ export function guardGeminiTrailingTurn(
     }
   }
   if (options.popTrailingModel !== false) {
-    while (out.length && out[out.length - 1].role === "model") out.pop();
+    while (out.length && out[out.length - 1].role === "model") {
+      const parts = out[out.length - 1].parts;
+      if (Array.isArray(parts) && parts.some((p) => p != null && "functionCall" in p)) break;
+      out.pop();
+    }
   }
   if (!out.length) out.push({ role: "user", parts: [{ text: "Continue." }] });
   return out;
