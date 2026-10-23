@@ -91,7 +91,12 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 const ROOT = process.cwd();
-const scannedFiles = SCANNED_DIRS.flatMap((dir) => walk(path.join(ROOT, dir)));
+// acpAgents.ts lists CLI agents the generic ACP executor can drive (including the OpenCode
+// client integration). It is not a provider registry, so its `opencode` agent id is not a reintroduction.
+const NOT_A_PROVIDER_REGISTRY = new Set(["open-sse/executors/acpAgents.ts"]);
+const scannedFiles = SCANNED_DIRS.flatMap((dir) => walk(path.join(ROOT, dir))).filter(
+  (file) => !NOT_A_PROVIDER_REGISTRY.has(path.relative(ROOT, file).split(path.sep).join("/"))
+);
 
 for (const removed of REMOVED_PROVIDERS) {
   test(`removed provider "${removed.id}" (PR #${removed.removalPr ?? "pending"}) stays out of the chat registry`, () => {
