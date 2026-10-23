@@ -148,6 +148,16 @@ test("combo drops non-plain envelopes even without header overrides", () => {
   }
 });
 
+test("combo ignores an own __proto__ key in a parsed body envelope", () => {
+  const body = JSON.parse(
+    '{"_omnirouteEnvelope":{"__proto__":{"polluted":true},"taskRole":"review"}}'
+  );
+  combo.attachRequestRoutingEnvelope(body, new Headers({ "x-omniroute-author-model": "glm-5.3" }));
+  assert.equal(Object.getPrototypeOf(body._omnirouteEnvelope), Object.prototype);
+  assert.equal(body._omnirouteEnvelope.polluted, undefined);
+  assert.equal(body._omnirouteEnvelope.taskRole, "review");
+});
+
 test("raw header assertion rejects nested credentials and Headers", () => {
   for (const key of ["Authorization", "COOKIE", "Set-Cookie", "X-Api-Key"]) {
     assert.throws(() => assertNoRawHeaders({ nested: [{ [key]: "example" }] }));

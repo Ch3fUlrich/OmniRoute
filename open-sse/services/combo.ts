@@ -26,9 +26,9 @@ export function attachRequestRoutingEnvelope(body: unknown, requestHeaders: unkn
         const fromBody = existing as Record<string, unknown>;
         const merged: Record<string, unknown> = { ...envelope };
         for (const [key, value] of Object.entries(fromBody)) {
-          if (value !== undefined) merged[key] = value;
+          if (value !== undefined && key !== "__proto__") merged[key] = value;
         }
-        // Exclusions are additive: header families come first; the body cannot cancel them.
+        // Body wins per defined field; exclusions are the exception: additive, header first, the body cannot cancel them.
         const excludeFamilies = [
           ...new Set([
             ...(Array.isArray(envelope.excludeFamilies) ? envelope.excludeFamilies : []),
