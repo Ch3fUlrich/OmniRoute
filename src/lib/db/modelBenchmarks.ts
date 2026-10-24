@@ -9,6 +9,7 @@
  */
 
 import { getDbInstance, rowToCamel } from "./core";
+import { PRIOR_BENCHMARK_ROWS, PUBLIC_BENCHMARK_ROWS } from "./modelBenchmarkSources";
 
 // ──────────────── Types ────────────────
 
@@ -38,7 +39,7 @@ export interface ModelBenchmarkEntry {
 
 // ──────────────── Default Benchmarks (AA v4.3.2) ────────────────
 
-export const DEFAULT_MODEL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
+const LITERAL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
   {
     modelId: "claude-opus-5-5-high",
     family: "claude",
@@ -370,6 +371,60 @@ export const DEFAULT_MODEL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
   },
 ];
 
+const literalIds = new Set(LITERAL_BENCHMARKS.map((entry) => entry.modelId));
+const publicRows: ModelBenchmarkEntry[] = PUBLIC_BENCHMARK_ROWS.filter(
+  ([modelId]) => !literalIds.has(modelId)
+).map(([modelId, family, aaIntelligence, verifiedTokPerS, ttftS, costPerTaskUsd, url]) => ({
+  modelId,
+  family,
+  aaIntelligence,
+  verifiedTokPerS,
+  ttftS,
+  costPerTaskUsd,
+  benchmarkSource: `artificialanalysis.ai:https://artificialanalysis.ai/models/${url}`,
+}));
+const siblingEntries = new Map(
+  [...LITERAL_BENCHMARKS, ...publicRows].map((entry) => [entry.modelId, entry])
+);
+const priorRows: ModelBenchmarkEntry[] = PRIOR_BENCHMARK_ROWS.map(
+  ([modelId, family, sibling]) => {
+    const entry = siblingEntries.get(sibling);
+    if (!entry) throw new Error(`Missing benchmark sibling: ${sibling}`);
+    return {
+      ...entry,
+      modelId,
+      family: family ?? entry.family,
+      benchmarkSource: `prior:${sibling}`,
+    };
+  }
+).filter((entry) => !literalIds.has(entry.modelId));
+
+export const DEFAULT_MODEL_BENCHMARKS: readonly ModelBenchmarkEntry[] = [
+  ...LITERAL_BENCHMARKS,
+  ...publicRows,
+  ...priorRows,
+];
+
+export const MODEL_ID_ALIASES: Readonly<Record<string, string>> = {
+  haiku: "claude-haiku-5-5",
+  "l3-driver": "qwen3.8-27b",
+};
+
+/** Classify published figures, explicit sibling priors, and measured overrides. */
+export function benchmarkProvenance(entry: ModelBenchmarkEntry): {
+  intelligence: "published" | "prior";
+  throughputCost: "published" | "prior" | "measured";
+  pSource: "published" | "prior" | "measured";
+} {
+  const intelligence = entry.benchmarkSource.startsWith("prior:") ? "prior" : "published";
+  const throughputCost =
+    intelligence === "prior" && /\+measured:\d{4}-\d{2}-\d{2}(?!\d)/.test(entry.benchmarkSource)
+      ? "measured"
+      : intelligence;
+  const pSource = throughputCost === "measured" ? "measured" : intelligence;
+  return { intelligence, throughputCost, pSource };
+}
+
 // ──────────────── Helpers ────────────────
 
 function rowToEntry(row: Record<string, unknown>): ModelBenchmarkEntry {
@@ -517,6 +572,12 @@ export function lookupModelBenchmarkFromMap(
     const bare = modelId.split("/").pop()!;
     const bareMatch = lookupMap.get(bare) ?? lookupMap.get(bare.toLowerCase());
     if (bareMatch) return bareMatch;
+  }
+  const aliasKey = modelId.split("/").pop()!.toLowerCase();
+  const alias = Object.hasOwn(MODEL_ID_ALIASES, aliasKey) ? MODEL_ID_ALIASES[aliasKey] : undefined;
+  if (alias) {
+    const aliasMatch = lookupMap.get(alias) ?? lookupMap.get(alias.toLowerCase());
+    if (aliasMatch) return aliasMatch;
   }
   return null;
 }
