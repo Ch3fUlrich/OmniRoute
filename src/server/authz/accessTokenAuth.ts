@@ -1,5 +1,11 @@
 import { verifyAccessToken } from "@/lib/db/accessTokens";
-import { scopeSatisfies, type AccessScope, type TokenScope } from "@/lib/accessTokens/scopes";
+import {
+  scopeSatisfies,
+  isLimitedScope,
+  LIMITED_SCOPE_GRANTS,
+  type AccessScope,
+  type TokenScope,
+} from "@/lib/accessTokens/scopes";
 import { inferRequiredScope } from "@/server/authz/accessScopes";
 
 /**
@@ -33,7 +39,11 @@ export function extractBearer(request: Request): string | null {
 
 function safePathname(url: string): string {
   try {
-    return new URL(url).pathname;
+    const raw = new URL(url, "http://localhost").pathname;
+    let path = raw || "/";
+    if (!path.startsWith("/")) path = "/" + path;
+    if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+    return path;
   } catch {
     return "/";
   }
@@ -61,8 +71,10 @@ export function evaluateAccessTokenAuth(request: Request): AccessTokenVerdict {
   const pathname = safePathname(request.url);
   const method = (request.method || "GET").toUpperCase();
 
-  if (verified.scope === "logs:read") {
-    if (method === "GET" && pathname === "/api/usage/call-logs") {
+  if (isLimitedScope(verified.scope)) {
+    const grants = LIMITED_SCOPE_GRANTS[verified.scope] ?? [];
+    const matched = grants.some((grant) => grant.method === method && grant.path === pathname);
+    if (matched) {
       return { kind: "ok", scope: verified.scope, id: verified.id, name: verified.name };
     }
     const need = inferRequiredScope(method, pathname);

@@ -2,8 +2,8 @@ import { createHash, randomBytes, randomUUID } from "crypto";
 import { getDbInstance } from "./core";
 import {
   type TokenScope,
-  isAccessScope,
   isLimitedScope,
+  isTokenScope,
   normalizeScope,
 } from "../accessTokens/scopes";
 
@@ -27,7 +27,7 @@ const LAST_USED_WRITE_INTERVAL_MS = 60_000;
 export interface AccessTokenRecord {
   id: string;
   name: string;
-  scope: TokenScope | string;
+  scope: TokenScope;
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
@@ -67,7 +67,7 @@ function rowToRecord(row: AccessTokenRow): AccessTokenRecord {
   return {
     id: row.id,
     name: row.name,
-    scope: row.scope,
+    scope: (isTokenScope(row.scope) ? row.scope : row.scope) as TokenScope,
     tokenPrefix: row.token_prefix,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
@@ -112,12 +112,17 @@ export function createAccessToken(input: {
   const scope: TokenScope = isLimitedScope(input.scope)
     ? input.scope
     : normalizeScope(input.scope, "read");
+  const expiresAt = input.expiresAt ?? null;
+
+  if (isLimitedScope(scope) && !expiresAt) {
+    throw new Error(`Limited scope '${scope}' requires an expiration date`);
+  }
+
   const secret = `${TOKEN_SECRET_PREFIX}${randomBytes(TOKEN_RANDOM_BYTES).toString("base64url")}`;
   const id = `tok_${randomUUID()}`;
   const tokenHash = hashAccessToken(secret);
   const tokenPrefix = secret.slice(0, DISPLAY_PREFIX_LEN);
   const createdAt = new Date().toISOString();
-  const expiresAt = input.expiresAt ?? null;
 
   db.prepare(
     `INSERT INTO cli_access_tokens
@@ -155,7 +160,10 @@ export function verifyAccessToken(secret: string | null | undefined): VerifiedAc
   if (isExpired(row.expires_at)) return null;
 
   // Stored scope must be a valid access scope or limited scope; unknown stored scope yields no access (invalid), never "read".
-  if (!isAccessScope(row.scope) && !isLimitedScope(row.scope)) {
+  if (!isTokenScope(row.scope)) {
+    console.warn(
+      `[accessTokens] Access token ${row.id} (${row.token_prefix}...) has unknown stored scope '${String(row.scope)}'; rejecting authentication`
+    );
     return null;
   }
   const scope: TokenScope = row.scope;

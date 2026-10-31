@@ -1,5 +1,5 @@
 /**
- * CLI access-token scopes — the 3-level hierarchy used by remote mode.
+ * CLI access-token scopes — hierarchical access scopes and limited purpose-specific scopes.
  *
  * These tokens authorize the `omniroute` CLI (and dashboard) to run *management*
  * commands against a (possibly remote) OmniRoute server. They are distinct from
@@ -10,6 +10,10 @@
  *   - write : read + configure/apply (setup-codex, keys add, config set, combo edit)
  *   - admin : write + sensitive management (tokens create/revoke, providers add,
  *             services install/start, policy, oauth)
+ *
+ * Limited scopes (purpose-specific, outside the read<write<admin hierarchy):
+ *   - logs:read : read-only access strictly to /api/usage/call-logs and /api/cli/whoami.
+ *                 Requires minute-based expiration.
  *
  * Loopback-only routes that spawn processes (`isLocalOnlyPath`) are NEVER reachable
  * by a remote token regardless of scope — that enforcement happens before auth.
@@ -26,6 +30,19 @@ export type LimitedScope = (typeof LIMITED_SCOPES)[number];
 export const TOKEN_SCOPES = [...ACCESS_SCOPES, ...LIMITED_SCOPES] as const;
 
 export type TokenScope = (typeof TOKEN_SCOPES)[number];
+
+export interface ScopeGrant {
+  method: string;
+  path: string;
+}
+
+/** Route grants permitted for limited purpose-specific scopes. */
+export const LIMITED_SCOPE_GRANTS: Record<LimitedScope, readonly ScopeGrant[]> = {
+  "logs:read": [
+    { method: "GET", path: "/api/usage/call-logs" },
+    { method: "GET", path: "/api/cli/whoami" },
+  ],
+};
 
 /** Numeric rank for hierarchy comparisons. Higher = more privileged. */
 const SCOPE_RANK: Record<AccessScope, number> = {

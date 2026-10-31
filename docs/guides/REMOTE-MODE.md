@@ -82,13 +82,14 @@ The CLI validates it via `GET /api/cli/whoami` and saves it as the active contex
 
 ## Scopes
 
-Three levels, hierarchical (`admin ⊃ write ⊃ read`):
+Hierarchical access scopes (`admin ⊃ write ⊃ read`) plus limited purpose-specific scopes (`logs:read`):
 
-| Scope   | Can do                                                                       |
-| ------- | ---------------------------------------------------------------------------- |
-| `read`  | list/inspect — `models list`, `providers status`, `logs`, `usage`, `cost`    |
-| `write` | read **+** configure/apply — `setup-codex`, `keys add`, `config set`, combos |
-| `admin` | write **+** manage — `tokens` CRUD, add providers, services, policy, oauth   |
+| Scope       | Can do                                                                       |
+| ----------- | ---------------------------------------------------------------------------- |
+| `read`      | list/inspect — `models list`, `providers status`, `logs`, `usage`, `cost`    |
+| `write`     | read **+** configure/apply — `setup-codex`, `keys add`, `config set`, combos |
+| `admin`     | write **+** manage — `tokens` CRUD, add providers, services, policy, oauth   |
+| `logs:read` | call logs read-only (`/api/usage/call-logs`); requires minute-based expiry   |
 
 The server infers the scope each route requires from the HTTP method
 (`GET`→read, mutations→write) plus an admin allowlist for sensitive surfaces

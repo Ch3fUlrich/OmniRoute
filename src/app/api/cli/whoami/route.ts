@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { extractBearer, ACCESS_TOKEN_PREFIX } from "@/server/authz/accessTokenAuth";
 import { verifyAccessToken, getAccessToken } from "@/lib/db/accessTokens";
-import { isLimitedScope } from "@/lib/accessTokens/scopes";
 
 /**
  * GET /api/cli/whoami — report the current credential to the CLI.
@@ -21,12 +20,6 @@ export async function GET(request: Request) {
   if (bearer && bearer.startsWith(ACCESS_TOKEN_PREFIX)) {
     const verified = verifyAccessToken(bearer);
     if (verified) {
-      if (isLimitedScope(verified.scope)) {
-        return NextResponse.json(
-          { error: `Access token scope '${verified.scope}' is insufficient; 'read' required.` },
-          { status: 403 }
-        );
-      }
       const record = getAccessToken(verified.id);
       return NextResponse.json({
         authenticated: true,

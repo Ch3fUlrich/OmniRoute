@@ -41,7 +41,7 @@ const createSchema = z
   })
   .refine((data) => !(isLimitedScope(data.scope) && typeof data.expiresInMinutes !== "number"), {
     message:
-      "Scope 'logs:read' requires expiresInMinutes (limited tokens cannot be non-expiring or day-based)",
+      "Limited scopes require expiresInMinutes (limited tokens cannot be non-expiring or day-based)",
     path: ["expiresInMinutes"],
   });
 

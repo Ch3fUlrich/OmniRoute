@@ -2793,8 +2793,9 @@ paths:
               required: [name]
               properties:
                 name: { type: string }
-                scope: { type: string, enum: [read, write, admin] }
+                scope: { type: string, enum: [read, write, admin, logs:read] }
                 expiresInDays: { type: integer, minimum: 1, maximum: 3650 }
+                expiresInMinutes: { type: integer, minimum: 1, maximum: 1440 }
       responses:
         "200":
           description: Token created (token returned once)

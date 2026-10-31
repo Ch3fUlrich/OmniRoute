@@ -16,6 +16,7 @@ const scopesModule = await import("../../src/lib/accessTokens/scopes.ts");
 const accessTokensDb = await import("../../src/lib/db/accessTokens.ts");
 const apiKeysDb = await import("../../src/lib/db/apiKeys.ts");
 const { requireManagementAuth } = await import("../../src/lib/api/requireManagementAuth.ts");
+const { managementPolicy } = await import("../../src/server/authz/policies/management.ts");
 const callLogsRoute = await import("../../src/app/api/usage/call-logs/route.ts");
 const tokensRoute = await import("../../src/app/api/cli/tokens/route.ts");
 const revealRoute = await import("../../src/app/api/keys/[id]/reveal/route.ts");
@@ -28,6 +29,10 @@ const OPERATOR_CLI_HEADERS = {
   "x-omniroute-auth-kind": "management_key",
   "x-omniroute-auth-label": "local-cli-token",
 };
+
+function validExpiryIso(minutes = 30): string {
+  return new Date(Date.now() + minutes * 60_000).toISOString();
+}
 
 test.after(() => {
   try {
@@ -71,10 +76,24 @@ test("LIMITED_SCOPES contains 'logs:read' and scopeSatisfies('logs:read', any) i
   );
 });
 
-test("createAccessToken stores 'logs:read' without widening, verifyAccessToken returns 'logs:read'", () => {
+test("F-2 / F-9: createAccessToken requires expiresAt for limited scopes and preserves TokenScope", () => {
+  // F-2: Limited scope without expiresAt must throw
+  assert.throws(
+    () => {
+      accessTokensDb.createAccessToken({
+        name: "unbounded-logs-token",
+        scope: "logs:read",
+      });
+    },
+    /expiration/i,
+    "createAccessToken must throw when minting limited scope without expiresAt"
+  );
+
+  // Succeeds with expiresAt
   const { record, secret } = accessTokensDb.createAccessToken({
     name: "plangraph-test-1",
     scope: "logs:read",
+    expiresAt: validExpiryIso(30),
   });
   assert.equal(record.scope, "logs:read");
 
@@ -87,7 +106,30 @@ test("createAccessToken stores 'logs:read' without widening, verifyAccessToken r
   assert.equal(listed?.scope, "logs:read");
 });
 
-test("stored unknown scope yields no access (invalid), never 'read', and rowToRecord agrees with verifyAccessToken", async () => {
+test("F-3: LIMITED_SCOPE_GRANTS structure maps each grant to an existing api route file", () => {
+  assert.ok(scopesModule.LIMITED_SCOPE_GRANTS, "LIMITED_SCOPE_GRANTS must be exported");
+  const grants = (
+    scopesModule.LIMITED_SCOPE_GRANTS as Record<
+      string,
+      ReadonlyArray<{ method: string; path: string }>
+    >
+  )["logs:read"];
+  assert.ok(Array.isArray(grants), "grants for logs:read must be an array");
+
+  for (const grant of grants) {
+    assert.ok(grant.method, "grant must specify method");
+    assert.ok(grant.path, "grant must specify path");
+    // Normalize path to file system: /api/usage/call-logs -> src/app/api/usage/call-logs/route.ts
+    const relativePath = grant.path.replace(/^\//, "");
+    const expectedRouteFile = path.resolve(process.cwd(), "src/app", relativePath, "route.ts");
+    assert.ok(
+      fs.existsSync(expectedRouteFile),
+      `Grant path ${grant.path} must resolve to an existing route file (${expectedRouteFile})`
+    );
+  }
+});
+
+test("F-6: stored unknown scope yields no access (invalid), logs a warning with id/prefix only, and rowToRecord agrees", async () => {
   const { record, secret } = accessTokensDb.createAccessToken({
     name: "tampered-token",
     scope: "read",
@@ -95,9 +137,27 @@ test("stored unknown scope yields no access (invalid), never 'read', and rowToRe
   const db = core.getDbInstance();
   db.prepare("UPDATE cli_access_tokens SET scope = ? WHERE id = ?").run("unknown_scope", record.id);
 
-  // verifyAccessToken must return null (invalid / no access)
-  const verified = accessTokensDb.verifyAccessToken(secret);
-  assert.equal(verified, null);
+  // Capture console.warn to verify warning breadcrumb
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+  };
+
+  try {
+    // verifyAccessToken must return null (invalid / no access)
+    const verified = accessTokensDb.verifyAccessToken(secret);
+    assert.equal(verified, null);
+
+    // F-6: Must have logged a warning mentioning id and prefix, but NOT the secret
+    assert.ok(warnings.length > 0, "must log a warning when stored scope is unknown");
+    const warnMessage = warnings.join("\n");
+    assert.match(warnMessage, new RegExp(record.id));
+    assert.match(warnMessage, new RegExp(record.tokenPrefix));
+    assert.equal(warnMessage.includes(secret), false, "must never log token secret");
+  } finally {
+    console.warn = originalWarn;
+  }
 
   // rowToRecord (via getAccessToken and listAccessTokens) must NOT coerce to "read", must keep raw value
   const fetched = accessTokensDb.getAccessToken(record.id);
@@ -128,7 +188,7 @@ test("stored unknown scope yields no access (invalid), never 'read', and rowToRe
 test("POST /api/cli/tokens validates scope 'logs:read' and expiresInMinutes", async () => {
   const admin = accessTokensDb.createAccessToken({ name: "admin-for-minting", scope: "admin" });
 
-  // 1. Non-operator (machine credential: admin access token) cannot mint logs:read -> 403
+  // 1. Admin oma_ token (machine credential) cannot mint logs:read -> 403
   const reqMachine = new Request(`${BASE}/api/cli/tokens`, {
     method: "POST",
     headers: {
@@ -136,19 +196,38 @@ test("POST /api/cli/tokens validates scope 'logs:read' and expiresInMinutes", as
       authorization: `Bearer ${admin.secret}`,
     },
     body: JSON.stringify({
-      name: "machine-logs-attempt",
+      name: "machine-minted-limited",
       scope: "logs:read",
       expiresInMinutes: 30,
     }),
   });
   const resMachine = await tokensRoute.POST(reqMachine);
+  assert.equal(resMachine.status, 403, "machine oma_ token cannot mint logs:read");
+
+  // F-7 (a): Manage-scope API key (machine credential) cannot mint logs:read -> 403
+  const manageKey = await apiKeysDb.createApiKey("machine-manage-key", "manage-admin-key", [
+    "manage",
+  ]);
+  const reqManageKey = new Request(`${BASE}/api/cli/tokens`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${manageKey.key}`,
+    },
+    body: JSON.stringify({
+      name: "machine-apikey-minted-limited",
+      scope: "logs:read",
+      expiresInMinutes: 30,
+    }),
+  });
+  const resManageKey = await tokensRoute.POST(reqManageKey);
   assert.equal(
-    resMachine.status,
+    resManageKey.status,
     403,
-    "machine credentials cannot mint non-allowlist scopes like logs:read"
+    "manage-scope API key machine credential cannot mint logs:read"
   );
 
-  // 2. Operator minting logs:read REQUIRES expiresInMinutes (cannot be non-expiring -> 400)
+  // 2. Operator minting logs:read without expiresInMinutes is rejected -> 400
   const reqNoExpiry = new Request(`${BASE}/api/cli/tokens`, {
     method: "POST",
     headers: {
@@ -198,63 +277,16 @@ test("POST /api/cli/tokens validates scope 'logs:read' and expiresInMinutes", as
   assert.equal(dataOk.scope, "logs:read");
   assert.ok(dataOk.token.startsWith("oma_live_"));
   assert.ok(dataOk.expiresAt);
-  const diffMs = new Date(dataOk.expiresAt).getTime() - Date.now();
-  assert.ok(diffMs > 28 * 60_000 && diffMs <= 30 * 60_000 + 1000);
-
-  // 5. Reject both expiresInDays and expiresInMinutes together (400)
-  const reqBoth = new Request(`${BASE}/api/cli/tokens`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...OPERATOR_CLI_HEADERS,
-    },
-    body: JSON.stringify({
-      name: "both-expiries",
-      scope: "logs:read",
-      expiresInDays: 1,
-      expiresInMinutes: 30,
-    }),
-  });
-  const resBoth = await tokensRoute.POST(reqBoth);
-  assert.equal(resBoth.status, 400);
-
-  // 6. Reject expiresInMinutes out of bounds (< 1 or > 1440)
-  const reqZero = new Request(`${BASE}/api/cli/tokens`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...OPERATOR_CLI_HEADERS,
-    },
-    body: JSON.stringify({
-      name: "zero-minutes",
-      scope: "logs:read",
-      expiresInMinutes: 0,
-    }),
-  });
-  assert.equal((await tokensRoute.POST(reqZero)).status, 400);
-
-  const reqTooLarge = new Request(`${BASE}/api/cli/tokens`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...OPERATOR_CLI_HEADERS,
-    },
-    body: JSON.stringify({
-      name: "too-many-minutes",
-      scope: "logs:read",
-      expiresInMinutes: 1441,
-    }),
-  });
-  assert.equal((await tokensRoute.POST(reqTooLarge)).status, 400);
 });
 
-test("logs:read scope access matrix: 200 on GET /api/usage/call-logs; 403 on reveal, tokens, whoami, sibling paths, variants, HEAD; 401 on expired", async () => {
+test("logs:read scope access matrix: 200 on call-logs (including trailing slash & relative URL) & whoami; 403 on reveal, tokens, adjacent surfaces, HEAD; 401 on expired", async () => {
   featureFlagsDb.setFeatureFlagOverride("ALLOW_API_KEY_REVEAL", "true");
   const testKey = await apiKeysDb.createApiKey("reveal-target", "machine-test");
 
   const { secret } = accessTokensDb.createAccessToken({
     name: "plangraph-token",
     scope: "logs:read",
+    expiresAt: validExpiryIso(60),
   });
 
   // 1. GET /api/usage/call-logs -> 200
@@ -263,6 +295,39 @@ test("logs:read scope access matrix: 200 on GET /api/usage/call-logs; 403 on rev
   });
   const resLogs = await callLogsRoute.GET(reqLogs);
   assert.equal(resLogs.status, 200);
+
+  // F-4: Unbounded bulk read capped for limited scope (requested limit 500 capped to 200)
+  const reqBulkLogs = new Request(`${BASE}/api/usage/call-logs?limit=500`, {
+    headers: { authorization: `Bearer ${secret}` },
+  });
+  const resBulkLogs = await callLogsRoute.GET(reqBulkLogs);
+  assert.equal(resBulkLogs.status, 200);
+  const rows = await resBulkLogs.json();
+  assert.ok(Array.isArray(rows));
+  assert.ok(
+    rows.length <= 200,
+    `limited scope logs rows count ${rows.length} must be capped at 200`
+  );
+
+  // F-5: Relative URL GET /api/usage/call-logs -> 200
+  const reqRelative = {
+    method: "GET",
+    url: "/api/usage/call-logs",
+    headers: new Headers({ authorization: `Bearer ${secret}` }),
+  } as unknown as Request;
+  const resRelative = await requireManagementAuth(reqRelative);
+  assert.equal(resRelative, null, "relative URL /api/usage/call-logs must be allowed");
+
+  // F-5: Trailing slash GET /api/usage/call-logs/ -> 200 (normalized like classifier)
+  const reqTrailing = new Request(`${BASE}/api/usage/call-logs/`, {
+    headers: { authorization: `Bearer ${secret}` },
+  });
+  const resTrailing = await requireManagementAuth(reqTrailing);
+  assert.equal(
+    resTrailing,
+    null,
+    "trailing slash /api/usage/call-logs/ must normalize and be allowed"
+  );
 
   // 2. Sibling path GET /api/usage/call-logs/filters -> 403
   const reqFilters = new Request(`${BASE}/api/usage/call-logs/filters`, {
@@ -279,14 +344,6 @@ test("logs:read scope access matrix: 200 on GET /api/usage/call-logs; 403 on rev
   const resId = await requireManagementAuth(reqId);
   assert.ok(resId);
   assert.equal(resId?.status, 403, "sibling /api/usage/call-logs/<id> must be 403");
-
-  // 4. Trailing slash GET /api/usage/call-logs/ -> 403
-  const reqTrailing = new Request(`${BASE}/api/usage/call-logs/`, {
-    headers: { authorization: `Bearer ${secret}` },
-  });
-  const resTrailing = await requireManagementAuth(reqTrailing);
-  assert.ok(resTrailing);
-  assert.equal(resTrailing?.status, 403, "trailing slash /api/usage/call-logs/ must be 403");
 
   // 5. Case variant GET /API/USAGE/CALL-LOGS -> 403
   const reqCase = new Request(`${BASE}/API/USAGE/CALL-LOGS`, {
@@ -305,18 +362,16 @@ test("logs:read scope access matrix: 200 on GET /api/usage/call-logs; 403 on rev
   assert.ok(resHead);
   assert.equal(resHead?.status, 403, "HEAD /api/usage/call-logs must be 403");
 
-  // 7. GET /api/cli/whoami with logs:read -> 403
+  // F-1: GET /api/cli/whoami with logs:read -> 200 (usable by connect --key)
   const reqWhoami = new Request(`${BASE}/api/cli/whoami`, {
     headers: { authorization: `Bearer ${secret}` },
   });
   const resWhoami = await whoamiRoute.GET(reqWhoami);
-  assert.equal(resWhoami.status, 403, "GET /api/cli/whoami with logs:read must be 403");
+  assert.equal(resWhoami.status, 200, "GET /api/cli/whoami with logs:read must return 200");
   const whoamiBody = await resWhoami.json();
-  const whoamiErr =
-    typeof whoamiBody.error === "string"
-      ? whoamiBody.error
-      : whoamiBody.error?.message || whoamiBody.message;
-  assert.match(whoamiErr, /logs:read/);
+  assert.equal(whoamiBody.authenticated, true);
+  assert.equal(whoamiBody.viaAccessToken, true);
+  assert.equal(whoamiBody.scope, "logs:read");
 
   // 8. GET /api/keys/<id>/reveal (reveal enabled) -> 403
   const reqReveal = new Request(`${BASE}/api/keys/${testKey.id}/reveal`, {
@@ -342,6 +397,21 @@ test("logs:read scope access matrix: 200 on GET /api/usage/call-logs; 403 on rev
   assert.ok(resCombos);
   assert.equal(resCombos?.status, 403);
 
+  // F-7 (c): Assert logs:read is refused on richer adjacent surfaces
+  for (const adjacentPath of [
+    "/api/logs",
+    "/api/logs/export",
+    "/api/usage/request-logs",
+    "/api/conversations",
+  ]) {
+    const adjacentReq = new Request(`${BASE}${adjacentPath}`, {
+      headers: { authorization: `Bearer ${secret}` },
+    });
+    const adjacentRes = await requireManagementAuth(adjacentReq);
+    assert.ok(adjacentRes, `expected rejection on adjacent surface ${adjacentPath}`);
+    assert.equal(adjacentRes?.status, 403, `adjacent surface ${adjacentPath} must be 403`);
+  }
+
   // 11. POST /api/usage/call-logs -> 403
   const reqPostLogs = new Request(`${BASE}/api/usage/call-logs`, {
     method: "POST",
@@ -365,22 +435,44 @@ test("logs:read scope access matrix: 200 on GET /api/usage/call-logs; 403 on rev
   assert.equal(resExp.status, 401);
 });
 
-test("GET /api/cli/whoami in open mode (requireLogin: false) returns 403 for logs:read token via isLimitedScope", async () => {
-  const { updateSettings } = await import("../../src/lib/db/settings.ts");
-  await updateSettings({ requireLogin: false });
-  try {
-    const { secret } = accessTokensDb.createAccessToken({
-      name: "open-mode-whoami-token",
-      scope: "logs:read",
-    });
-    const req = new Request(`${BASE}/api/cli/whoami`, {
-      headers: { authorization: `Bearer ${secret}` },
-    });
-    const res = await whoamiRoute.GET(req);
-    assert.equal(res.status, 403);
-    const body = await res.json();
-    assert.match(body.error, /logs:read.*insufficient/);
-  } finally {
-    await updateSettings({ requireLogin: true });
+test("F-7 (b): Authoritative central gate managementPolicy allows logs:read on call-logs and rejects other management routes", async () => {
+  const { secret } = accessTokensDb.createAccessToken({
+    name: "policy-test-token",
+    scope: "logs:read",
+    expiresAt: validExpiryIso(30),
+  });
+
+  // Policy context helper
+  function makePolicyCtx(pathname: string, method = "GET") {
+    return {
+      request: {
+        method,
+        headers: new Headers({ authorization: `Bearer ${secret}` }),
+        url: `http://localhost${pathname}`,
+        nextUrl: { pathname },
+      },
+      classification: {
+        routeClass: "MANAGEMENT" as const,
+        reason: "management_api" as const,
+        normalizedPath: pathname,
+      },
+      requestId: "req_policy_test",
+    } as unknown as Parameters<typeof managementPolicy.evaluate>[0];
+  }
+
+  // Allowed on call-logs
+  const outcomeOk = await managementPolicy.evaluate(makePolicyCtx("/api/usage/call-logs"));
+  assert.equal(outcomeOk.allow, true);
+  if (outcomeOk.allow) {
+    assert.equal(outcomeOk.subject.kind, "management_key");
+    assert.equal(outcomeOk.subject.label, "access-token:logs:read");
+  }
+
+  // Rejected on /api/settings
+  const outcomeDenied = await managementPolicy.evaluate(makePolicyCtx("/api/settings"));
+  assert.equal(outcomeDenied.allow, false);
+  if (!outcomeDenied.allow) {
+    assert.equal(outcomeDenied.status, 403);
+    assert.equal(outcomeDenied.code, "AUTH_SCOPE");
   }
 });

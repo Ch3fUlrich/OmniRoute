@@ -2,7 +2,7 @@
 -- Distinct from `api_keys` (inference traffic): these authorize the `omniroute`
 -- CLI / dashboard to run management operations against a (possibly remote) server.
 -- Only the SHA-256 hash of the secret is stored; the plaintext is shown once at
--- creation. Scope is one of: 'read' | 'write' | 'admin' (admin ⊃ write ⊃ read).
+-- creation. Scope is one of: hierarchical ('read' | 'write' | 'admin') or limited ('logs:read').
 CREATE TABLE IF NOT EXISTS cli_access_tokens (
   id           TEXT PRIMARY KEY,
   token_hash   TEXT NOT NULL UNIQUE,
