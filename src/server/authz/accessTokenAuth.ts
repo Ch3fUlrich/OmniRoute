@@ -65,11 +65,11 @@ export function evaluateAccessTokenAuth(request: Request): AccessTokenVerdict {
     if (method === "GET" && pathname === "/api/usage/call-logs") {
       return { kind: "ok", scope: verified.scope, id: verified.id, name: verified.name };
     }
-    const need = inferRequiredScope(request.method, pathname);
+    const need = inferRequiredScope(method, pathname);
     return { kind: "insufficient", have: verified.scope, need };
   }
 
-  const need = inferRequiredScope(request.method, pathname);
+  const need = inferRequiredScope(method, pathname);
   if (!scopeSatisfies(verified.scope, need)) {
     return { kind: "insufficient", have: verified.scope, need };
   }

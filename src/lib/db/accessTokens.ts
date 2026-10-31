@@ -27,7 +27,7 @@ const LAST_USED_WRITE_INTERVAL_MS = 60_000;
 export interface AccessTokenRecord {
   id: string;
   name: string;
-  scope: TokenScope;
+  scope: TokenScope | string;
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
@@ -64,13 +64,10 @@ interface AccessTokenRow {
 }
 
 function rowToRecord(row: AccessTokenRow): AccessTokenRecord {
-  const scope: TokenScope = isLimitedScope(row.scope)
-    ? row.scope
-    : normalizeScope(row.scope);
   return {
     id: row.id,
     name: row.name,
-    scope,
+    scope: row.scope,
     tokenPrefix: row.token_prefix,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,

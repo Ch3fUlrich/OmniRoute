@@ -4,10 +4,7 @@ import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { createErrorResponse } from "@/lib/api/errorResponse";
 import { resolveOperatorCredential } from "@/lib/api/operatorCredential";
 import { createAccessToken, listAccessTokens } from "@/lib/db/accessTokens";
-import {
-  TOKEN_SCOPES,
-  type TokenScope,
-} from "@/lib/accessTokens/scopes";
+import { TOKEN_SCOPES, isLimitedScope, type TokenScope } from "@/lib/accessTokens/scopes";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 /**
@@ -22,6 +19,9 @@ import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
  * tier, so minting stays authenticated with login disabled, too.
  */
 
+/** Scopes a non-operator (API key / `oma_` token) caller may mint. */
+const MACHINE_CREDENTIAL_MINT_ALLOWLIST: readonly string[] = ["read", "write"];
+
 export async function GET(request: Request) {
   const authError = await requireManagementAuth(request);
   if (authError) return authError;
@@ -35,13 +35,15 @@ const createSchema = z
     expiresInDays: z.number().int().positive().max(3650).optional(),
     expiresInMinutes: z.number().int().min(1).max(1440).optional(),
   })
-  .refine(
-    (data) => !(data.expiresInDays !== undefined && data.expiresInMinutes !== undefined),
-    {
-      message: "Cannot specify both expiresInDays and expiresInMinutes",
-      path: ["expiresInMinutes"],
-    }
-  );
+  .refine((data) => !(data.expiresInDays !== undefined && data.expiresInMinutes !== undefined), {
+    message: "Cannot specify both expiresInDays and expiresInMinutes",
+    path: ["expiresInMinutes"],
+  })
+  .refine((data) => !(isLimitedScope(data.scope) && typeof data.expiresInMinutes !== "number"), {
+    message:
+      "Scope 'logs:read' requires expiresInMinutes (limited tokens cannot be non-expiring or day-based)",
+    path: ["expiresInMinutes"],
+  });
 
 export async function POST(request: Request) {
   const authError = await requireManagementAuth(request, { alwaysRequireAuth: true });
@@ -61,7 +63,7 @@ export async function POST(request: Request) {
   const { name, scope, expiresInDays, expiresInMinutes } = validation.data;
   const requestedScope: TokenScope = scope ?? "read";
 
-  if (requestedScope === "admin") {
+  if (!MACHINE_CREDENTIAL_MINT_ALLOWLIST.includes(requestedScope)) {
     let operator: Awaited<ReturnType<typeof resolveOperatorCredential>>;
     try {
       operator = await resolveOperatorCredential(request, { alwaysRequireAuth: true });
