@@ -19,6 +19,14 @@ export const ACCESS_SCOPES = ["read", "write", "admin"] as const;
 
 export type AccessScope = (typeof ACCESS_SCOPES)[number];
 
+export const LIMITED_SCOPES = ["logs:read"] as const;
+
+export type LimitedScope = (typeof LIMITED_SCOPES)[number];
+
+export const TOKEN_SCOPES = [...ACCESS_SCOPES, ...LIMITED_SCOPES] as const;
+
+export type TokenScope = (typeof TOKEN_SCOPES)[number];
+
 /** Numeric rank for hierarchy comparisons. Higher = more privileged. */
 const SCOPE_RANK: Record<AccessScope, number> = {
   read: 1,
@@ -31,6 +39,16 @@ export function isAccessScope(value: unknown): value is AccessScope {
   return typeof value === "string" && (ACCESS_SCOPES as readonly string[]).includes(value);
 }
 
+/** Type guard: is `value` one of the limited scopes outside the hierarchy? */
+export function isLimitedScope(value: unknown): value is LimitedScope {
+  return typeof value === "string" && (LIMITED_SCOPES as readonly string[]).includes(value);
+}
+
+/** Type guard: is `value` any valid token scope (hierarchical or limited)? */
+export function isTokenScope(value: unknown): value is TokenScope {
+  return isAccessScope(value) || isLimitedScope(value);
+}
+
 /**
  * True when a token holding `have` is allowed to perform an action that requires
  * `need`. Hierarchy is inclusive: an `admin` token satisfies `write` and `read`;
@@ -38,6 +56,7 @@ export function isAccessScope(value: unknown): value is AccessScope {
  */
 export function scopeSatisfies(have: unknown, need: AccessScope): boolean {
   if (!isAccessScope(have)) return false;
+  if (!isAccessScope(need)) return false;
   return SCOPE_RANK[have] >= SCOPE_RANK[need];
 }
 

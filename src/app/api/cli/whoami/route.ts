@@ -20,6 +20,12 @@ export async function GET(request: Request) {
   if (bearer && bearer.startsWith(ACCESS_TOKEN_PREFIX)) {
     const verified = verifyAccessToken(bearer);
     if (verified) {
+      if (verified.scope === "logs:read") {
+        return NextResponse.json(
+          { error: "Access token scope 'logs:read' is insufficient; 'read' required." },
+          { status: 403 }
+        );
+      }
       const record = getAccessToken(verified.id);
       return NextResponse.json({
         authenticated: true,

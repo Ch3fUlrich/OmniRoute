@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { getDbInstance } from "./core";
-import { type AccessScope, normalizeScope } from "../accessTokens/scopes";
+import {
+  type TokenScope,
+  isAccessScope,
+  isLimitedScope,
+  normalizeScope,
+} from "../accessTokens/scopes";
 
 /**
  * CLI access tokens — scoped credentials for remote-mode management commands.
@@ -22,7 +27,7 @@ const LAST_USED_WRITE_INTERVAL_MS = 60_000;
 export interface AccessTokenRecord {
   id: string;
   name: string;
-  scope: AccessScope;
+  scope: TokenScope;
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
@@ -34,7 +39,7 @@ export interface AccessTokenRecord {
 export interface VerifiedAccessToken {
   id: string;
   name: string;
-  scope: AccessScope;
+  scope: TokenScope;
 }
 
 /** Outcome of a revoke. A retry of an already-revoked token is still a success. */
@@ -59,10 +64,13 @@ interface AccessTokenRow {
 }
 
 function rowToRecord(row: AccessTokenRow): AccessTokenRecord {
+  const scope: TokenScope = isLimitedScope(row.scope)
+    ? row.scope
+    : normalizeScope(row.scope);
   return {
     id: row.id,
     name: row.name,
-    scope: normalizeScope(row.scope),
+    scope,
     tokenPrefix: row.token_prefix,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
@@ -97,14 +105,16 @@ function isExpired(expiresAt: string | null): boolean {
  */
 export function createAccessToken(input: {
   name: string;
-  scope?: AccessScope | string;
+  scope?: TokenScope | string;
   expiresAt?: string | null;
 }): { record: AccessTokenRecord; secret: string } {
   const name = (input.name ?? "").trim();
   if (!name) throw new Error("Access token name is required");
 
   const db = getDbInstance();
-  const scope = normalizeScope(input.scope, "read");
+  const scope: TokenScope = isLimitedScope(input.scope)
+    ? input.scope
+    : normalizeScope(input.scope, "read");
   const secret = `${TOKEN_SECRET_PREFIX}${randomBytes(TOKEN_RANDOM_BYTES).toString("base64url")}`;
   const id = `tok_${randomUUID()}`;
   const tokenHash = hashAccessToken(secret);
@@ -147,6 +157,12 @@ export function verifyAccessToken(secret: string | null | undefined): VerifiedAc
   if (row.revoked_at) return null;
   if (isExpired(row.expires_at)) return null;
 
+  // Stored scope must be a valid access scope or limited scope; unknown stored scope yields no access (invalid), never "read".
+  if (!isAccessScope(row.scope) && !isLimitedScope(row.scope)) {
+    return null;
+  }
+  const scope: TokenScope = row.scope;
+
   // A management request verifies the same token at the policy and the route.
   // Skip the write while the stored stamp is still inside the window.
   const lastUsedMs = row.last_used_at ? Date.parse(row.last_used_at) : Number.NaN;
@@ -163,7 +179,7 @@ export function verifyAccessToken(secret: string | null | undefined): VerifiedAc
     }
   }
 
-  return { id: row.id, name: row.name, scope: normalizeScope(row.scope) };
+  return { id: row.id, name: row.name, scope };
 }
 
 /** List all tokens (masked — never includes the secret or its hash). */

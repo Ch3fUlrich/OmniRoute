@@ -4,7 +4,10 @@ import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { createErrorResponse } from "@/lib/api/errorResponse";
 import { resolveOperatorCredential } from "@/lib/api/operatorCredential";
 import { createAccessToken, listAccessTokens } from "@/lib/db/accessTokens";
-import { ACCESS_SCOPES, scopeSatisfies, type AccessScope } from "@/lib/accessTokens/scopes";
+import {
+  TOKEN_SCOPES,
+  type TokenScope,
+} from "@/lib/accessTokens/scopes";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 
 /**
@@ -19,20 +22,26 @@ import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
  * tier, so minting stays authenticated with login disabled, too.
  */
 
-/** Highest scope a non-operator (API key / `oma_` token) caller may mint. */
-const MACHINE_CREDENTIAL_MINT_CEILING: AccessScope = "write";
-
 export async function GET(request: Request) {
   const authError = await requireManagementAuth(request);
   if (authError) return authError;
   return NextResponse.json({ tokens: listAccessTokens() });
 }
 
-const createSchema = z.object({
-  name: z.string().min(1).max(100),
-  scope: z.enum(ACCESS_SCOPES).optional(),
-  expiresInDays: z.number().int().positive().max(3650).optional(),
-});
+const createSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    scope: z.enum(TOKEN_SCOPES).optional(),
+    expiresInDays: z.number().int().positive().max(3650).optional(),
+    expiresInMinutes: z.number().int().min(1).max(1440).optional(),
+  })
+  .refine(
+    (data) => !(data.expiresInDays !== undefined && data.expiresInMinutes !== undefined),
+    {
+      message: "Cannot specify both expiresInDays and expiresInMinutes",
+      path: ["expiresInMinutes"],
+    }
+  );
 
 export async function POST(request: Request) {
   const authError = await requireManagementAuth(request, { alwaysRequireAuth: true });
@@ -49,10 +58,10 @@ export async function POST(request: Request) {
   if (isValidationFailure(validation)) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
-  const { name, scope, expiresInDays } = validation.data;
-  const requestedScope: AccessScope = scope ?? "read";
+  const { name, scope, expiresInDays, expiresInMinutes } = validation.data;
+  const requestedScope: TokenScope = scope ?? "read";
 
-  if (!scopeSatisfies(MACHINE_CREDENTIAL_MINT_CEILING, requestedScope)) {
+  if (requestedScope === "admin") {
     let operator: Awaited<ReturnType<typeof resolveOperatorCredential>>;
     try {
       operator = await resolveOperatorCredential(request, { alwaysRequireAuth: true });
@@ -74,9 +83,11 @@ export async function POST(request: Request) {
   }
 
   const expiresAt =
-    typeof expiresInDays === "number"
-      ? new Date(Date.now() + expiresInDays * 86_400_000).toISOString()
-      : null;
+    typeof expiresInMinutes === "number"
+      ? new Date(Date.now() + expiresInMinutes * 60_000).toISOString()
+      : typeof expiresInDays === "number"
+        ? new Date(Date.now() + expiresInDays * 86_400_000).toISOString()
+        : null;
 
   const { record, secret } = createAccessToken({ name, scope: requestedScope, expiresAt });
 

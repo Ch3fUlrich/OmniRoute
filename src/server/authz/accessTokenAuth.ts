@@ -1,5 +1,5 @@
 import { verifyAccessToken } from "@/lib/db/accessTokens";
-import { scopeSatisfies, type AccessScope } from "@/lib/accessTokens/scopes";
+import { scopeSatisfies, type AccessScope, type TokenScope } from "@/lib/accessTokens/scopes";
 import { inferRequiredScope } from "@/server/authz/accessScopes";
 
 /**
@@ -21,8 +21,8 @@ export type AccessTokenVerdict =
   | { kind: "absent" } // no oma_ bearer present → caller continues other auth paths
   | { kind: "error" } // auth backend (DB) threw → 503, not an auth failure
   | { kind: "invalid" } // oma_ present but unknown/expired/revoked → 401
-  | { kind: "insufficient"; have: AccessScope; need: AccessScope } // valid but scope too low → 403
-  | { kind: "ok"; scope: AccessScope; id: string; name: string }; // authorized → allow
+  | { kind: "insufficient"; have: TokenScope; need: AccessScope } // valid but scope too low → 403
+  | { kind: "ok"; scope: TokenScope; id: string; name: string }; // authorized → allow
 
 /** Read a Bearer token from the Authorization header (header-only; never URL). */
 export function extractBearer(request: Request): string | null {
@@ -58,7 +58,18 @@ export function evaluateAccessTokenAuth(request: Request): AccessTokenVerdict {
   }
   if (!verified) return { kind: "invalid" };
 
-  const need = inferRequiredScope(request.method, safePathname(request.url));
+  const pathname = safePathname(request.url);
+  const method = (request.method || "GET").toUpperCase();
+
+  if (verified.scope === "logs:read") {
+    if (method === "GET" && pathname === "/api/usage/call-logs") {
+      return { kind: "ok", scope: verified.scope, id: verified.id, name: verified.name };
+    }
+    const need = inferRequiredScope(request.method, pathname);
+    return { kind: "insufficient", have: verified.scope, need };
+  }
+
+  const need = inferRequiredScope(request.method, pathname);
   if (!scopeSatisfies(verified.scope, need)) {
     return { kind: "insufficient", have: verified.scope, need };
   }
