@@ -6,6 +6,11 @@ import { getCompletedDetails, getPendingById } from "@/lib/usage/usageHistory";
 import { getProviderConnections } from "@/lib/db/providers";
 import { getProviderNodes } from "@/models";
 import { matchesSearch } from "@/shared/utils/turkishText";
+import { extractBearer, ACCESS_TOKEN_PREFIX } from "@/server/authz/accessTokenAuth";
+import { verifyAccessToken } from "@/lib/db/accessTokens";
+import { isLimitedScope } from "@/lib/accessTokens/scopes";
+
+export const LIMITED_SCOPE_CALL_LOGS_MAX_LIMIT = 200;
 
 type CallLogListRowsInput = {
   logs: any[];
@@ -232,6 +237,11 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
 
+    const bearer = extractBearer(request);
+    const callerToken =
+      bearer && bearer.startsWith(ACCESS_TOKEN_PREFIX) ? verifyAccessToken(bearer) : null;
+    const isLimited = isLimitedScope(callerToken?.scope);
+
     const filter: Record<string, any> = {};
     if (searchParams.get("status")) filter.status = searchParams.get("status");
     if (searchParams.get("model")) filter.model = searchParams.get("model");
@@ -241,8 +251,17 @@ export async function GET(request: Request) {
     if (searchParams.get("combo")) filter.combo = searchParams.get("combo");
     if (searchParams.get("search")) filter.search = searchParams.get("search");
     if (searchParams.get("correlationId")) filter.correlationId = searchParams.get("correlationId");
-    if (searchParams.get("limit")) filter.limit = parseInt(searchParams.get("limit"));
-    if (searchParams.get("offset")) filter.offset = parseInt(searchParams.get("offset"));
+    if (searchParams.get("limit")) {
+      const parsedLimit = parseInt(searchParams.get("limit")!, 10);
+      if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+        filter.limit = isLimited
+          ? Math.min(parsedLimit, LIMITED_SCOPE_CALL_LOGS_MAX_LIMIT)
+          : parsedLimit;
+      }
+    } else if (isLimited) {
+      filter.limit = LIMITED_SCOPE_CALL_LOGS_MAX_LIMIT;
+    }
+    if (searchParams.get("offset")) filter.offset = parseInt(searchParams.get("offset")!, 10);
     // Home Recent Requests feed sets excludeTests=1 so connection-test probe rows
     // are dropped at the SQL layer (before LIMIT), not client-side after slicing.
     if (searchParams.get("excludeTests") === "1") filter.excludeTests = true;
@@ -279,7 +298,10 @@ export async function GET(request: Request) {
     });
 
     const filtered = rows.filter((r: any) => rowMatchesFilter(r, filter));
-    return NextResponse.json(filtered);
+    const finalRows = isLimited
+      ? filtered.slice(0, filter.limit ?? LIMITED_SCOPE_CALL_LOGS_MAX_LIMIT)
+      : filtered;
+    return NextResponse.json(finalRows);
   } catch (error) {
     console.error("[API ERROR] /api/usage/call-logs failed:", error);
     return NextResponse.json({ error: "Failed to fetch call logs" }, { status: 500 });

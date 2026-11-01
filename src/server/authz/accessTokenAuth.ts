@@ -1,5 +1,11 @@
 import { verifyAccessToken } from "@/lib/db/accessTokens";
-import { scopeSatisfies, type AccessScope } from "@/lib/accessTokens/scopes";
+import {
+  scopeSatisfies,
+  isLimitedScope,
+  LIMITED_SCOPE_GRANTS,
+  type AccessScope,
+  type TokenScope,
+} from "@/lib/accessTokens/scopes";
 import { inferRequiredScope } from "@/server/authz/accessScopes";
 
 /**
@@ -21,8 +27,8 @@ export type AccessTokenVerdict =
   | { kind: "absent" } // no oma_ bearer present → caller continues other auth paths
   | { kind: "error" } // auth backend (DB) threw → 503, not an auth failure
   | { kind: "invalid" } // oma_ present but unknown/expired/revoked → 401
-  | { kind: "insufficient"; have: AccessScope; need: AccessScope } // valid but scope too low → 403
-  | { kind: "ok"; scope: AccessScope; id: string; name: string }; // authorized → allow
+  | { kind: "insufficient"; have: TokenScope; need: AccessScope } // valid but scope too low → 403
+  | { kind: "ok"; scope: TokenScope; id: string; name: string }; // authorized → allow
 
 /** Read a Bearer token from the Authorization header (header-only; never URL). */
 export function extractBearer(request: Request): string | null {
@@ -33,7 +39,11 @@ export function extractBearer(request: Request): string | null {
 
 function safePathname(url: string): string {
   try {
-    return new URL(url).pathname;
+    const raw = new URL(url, "http://localhost").pathname;
+    let path = raw || "/";
+    if (!path.startsWith("/")) path = "/" + path;
+    if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+    return path;
   } catch {
     return "/";
   }
@@ -58,7 +68,20 @@ export function evaluateAccessTokenAuth(request: Request): AccessTokenVerdict {
   }
   if (!verified) return { kind: "invalid" };
 
-  const need = inferRequiredScope(request.method, safePathname(request.url));
+  const pathname = safePathname(request.url);
+  const method = (request.method || "GET").toUpperCase();
+
+  if (isLimitedScope(verified.scope)) {
+    const grants = LIMITED_SCOPE_GRANTS[verified.scope] ?? [];
+    const matched = grants.some((grant) => grant.method === method && grant.path === pathname);
+    if (matched) {
+      return { kind: "ok", scope: verified.scope, id: verified.id, name: verified.name };
+    }
+    const need = inferRequiredScope(method, pathname);
+    return { kind: "insufficient", have: verified.scope, need };
+  }
+
+  const need = inferRequiredScope(method, pathname);
   if (!scopeSatisfies(verified.scope, need)) {
     return { kind: "insufficient", have: verified.scope, need };
   }

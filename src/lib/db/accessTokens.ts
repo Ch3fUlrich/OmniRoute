@@ -1,6 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { getDbInstance } from "./core";
-import { type AccessScope, normalizeScope } from "../accessTokens/scopes";
+import {
+  type TokenScope,
+  isLimitedScope,
+  isTokenScope,
+  normalizeScope,
+} from "../accessTokens/scopes";
 
 /**
  * CLI access tokens — scoped credentials for remote-mode management commands.
@@ -22,7 +27,7 @@ const LAST_USED_WRITE_INTERVAL_MS = 60_000;
 export interface AccessTokenRecord {
   id: string;
   name: string;
-  scope: AccessScope;
+  scope: TokenScope;
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
@@ -34,7 +39,7 @@ export interface AccessTokenRecord {
 export interface VerifiedAccessToken {
   id: string;
   name: string;
-  scope: AccessScope;
+  scope: TokenScope;
 }
 
 /** Outcome of a revoke. A retry of an already-revoked token is still a success. */
@@ -62,7 +67,7 @@ function rowToRecord(row: AccessTokenRow): AccessTokenRecord {
   return {
     id: row.id,
     name: row.name,
-    scope: normalizeScope(row.scope),
+    scope: (isTokenScope(row.scope) ? row.scope : row.scope) as TokenScope,
     tokenPrefix: row.token_prefix,
     createdAt: row.created_at,
     lastUsedAt: row.last_used_at,
@@ -97,20 +102,27 @@ function isExpired(expiresAt: string | null): boolean {
  */
 export function createAccessToken(input: {
   name: string;
-  scope?: AccessScope | string;
+  scope?: TokenScope | string;
   expiresAt?: string | null;
 }): { record: AccessTokenRecord; secret: string } {
   const name = (input.name ?? "").trim();
   if (!name) throw new Error("Access token name is required");
 
   const db = getDbInstance();
-  const scope = normalizeScope(input.scope, "read");
+  const scope: TokenScope = isLimitedScope(input.scope)
+    ? input.scope
+    : normalizeScope(input.scope, "read");
+  const expiresAt = input.expiresAt ?? null;
+
+  if (isLimitedScope(scope) && !expiresAt) {
+    throw new Error(`Limited scope '${scope}' requires an expiration date`);
+  }
+
   const secret = `${TOKEN_SECRET_PREFIX}${randomBytes(TOKEN_RANDOM_BYTES).toString("base64url")}`;
   const id = `tok_${randomUUID()}`;
   const tokenHash = hashAccessToken(secret);
   const tokenPrefix = secret.slice(0, DISPLAY_PREFIX_LEN);
   const createdAt = new Date().toISOString();
-  const expiresAt = input.expiresAt ?? null;
 
   db.prepare(
     `INSERT INTO cli_access_tokens
@@ -147,6 +159,15 @@ export function verifyAccessToken(secret: string | null | undefined): VerifiedAc
   if (row.revoked_at) return null;
   if (isExpired(row.expires_at)) return null;
 
+  // Stored scope must be a valid access scope or limited scope; unknown stored scope yields no access (invalid), never "read".
+  if (!isTokenScope(row.scope)) {
+    console.warn(
+      `[accessTokens] Access token ${row.id} (${row.token_prefix}...) has unknown stored scope '${String(row.scope)}'; rejecting authentication`
+    );
+    return null;
+  }
+  const scope: TokenScope = row.scope;
+
   // A management request verifies the same token at the policy and the route.
   // Skip the write while the stored stamp is still inside the window.
   const lastUsedMs = row.last_used_at ? Date.parse(row.last_used_at) : Number.NaN;
@@ -163,7 +184,7 @@ export function verifyAccessToken(secret: string | null | undefined): VerifiedAc
     }
   }
 
-  return { id: row.id, name: row.name, scope: normalizeScope(row.scope) };
+  return { id: row.id, name: row.name, scope };
 }
 
 /** List all tokens (masked — never includes the secret or its hash). */

@@ -8922,6 +8922,7 @@
     "accessTokensScopeReadLabel": "Read",
     "accessTokensScopeWriteLabel": "Write",
     "accessTokensScopeAdminLabel": "Admin",
+    "accessTokensScopeLogsReadLabel": "Logs (read-only)",
     "resilienceTokenRefreshTitle": "Token Refresh Breaker",
     "resilienceTokenRefreshDesc": "Stops retrying token refresh after repeated failures. Per-connection scope isolates one dead account so healthy accounts on the same provider keep refreshing.",
     "resilienceTokenRefreshScope": "Token refresh attempts for one provider",

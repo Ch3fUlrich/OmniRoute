@@ -23,11 +23,12 @@ import {
   EmptyState,
   Modal,
 } from "@/shared/components";
+import type { TokenScope } from "@/lib/accessTokens/scopes";
 
 interface AccessTokenRow {
   id: string;
   name: string;
-  scope: "read" | "write" | "admin";
+  scope: TokenScope;
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
@@ -35,10 +36,11 @@ interface AccessTokenRow {
   revokedAt: string | null;
 }
 
-const SCOPE_VARIANT: Record<string, "info" | "warning" | "error" | "default"> = {
+const SCOPE_VARIANT: Record<TokenScope, "info" | "warning" | "error" | "default"> = {
   read: "info",
   write: "warning",
   admin: "error",
+  "logs:read": "default",
 };
 
 async function fetchTokens(): Promise<AccessTokenRow[]> {
@@ -53,10 +55,11 @@ export default function AccessTokensTab() {
   const tc = useTranslations("common");
   const nameRef = useRef<HTMLInputElement>(null);
   const format = useFormatter();
-  const scopeLabels = {
+  const scopeLabels: Record<TokenScope, string> = {
     read: t("accessTokensScopeReadLabel"),
     write: t("accessTokensScopeWriteLabel"),
     admin: t("accessTokensScopeAdminLabel"),
+    "logs:read": t("accessTokensScopeLogsReadLabel"),
   };
   const [tokens, setTokens] = useState<AccessTokenRow[]>([]);
   const [loading, setLoading] = useState(true);

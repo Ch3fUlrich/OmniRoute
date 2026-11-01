@@ -1,5 +1,5 @@
 /**
- * CLI access-token scopes — the 3-level hierarchy used by remote mode.
+ * CLI access-token scopes — hierarchical access scopes and limited purpose-specific scopes.
  *
  * These tokens authorize the `omniroute` CLI (and dashboard) to run *management*
  * commands against a (possibly remote) OmniRoute server. They are distinct from
@@ -11,6 +11,10 @@
  *   - admin : write + sensitive management (tokens create/revoke, providers add,
  *             services install/start, policy, oauth)
  *
+ * Limited scopes (purpose-specific, outside the read<write<admin hierarchy):
+ *   - logs:read : read-only access strictly to /api/usage/call-logs and /api/cli/whoami.
+ *                 Requires minute-based expiration.
+ *
  * Loopback-only routes that spawn processes (`isLocalOnlyPath`) are NEVER reachable
  * by a remote token regardless of scope — that enforcement happens before auth.
  */
@@ -18,6 +22,27 @@
 export const ACCESS_SCOPES = ["read", "write", "admin"] as const;
 
 export type AccessScope = (typeof ACCESS_SCOPES)[number];
+
+export const LIMITED_SCOPES = ["logs:read"] as const;
+
+export type LimitedScope = (typeof LIMITED_SCOPES)[number];
+
+export const TOKEN_SCOPES = [...ACCESS_SCOPES, ...LIMITED_SCOPES] as const;
+
+export type TokenScope = (typeof TOKEN_SCOPES)[number];
+
+export interface ScopeGrant {
+  method: string;
+  path: string;
+}
+
+/** Route grants permitted for limited purpose-specific scopes. */
+export const LIMITED_SCOPE_GRANTS: Record<LimitedScope, readonly ScopeGrant[]> = {
+  "logs:read": [
+    { method: "GET", path: "/api/usage/call-logs" },
+    { method: "GET", path: "/api/cli/whoami" },
+  ],
+};
 
 /** Numeric rank for hierarchy comparisons. Higher = more privileged. */
 const SCOPE_RANK: Record<AccessScope, number> = {
@@ -31,6 +56,16 @@ export function isAccessScope(value: unknown): value is AccessScope {
   return typeof value === "string" && (ACCESS_SCOPES as readonly string[]).includes(value);
 }
 
+/** Type guard: is `value` one of the limited scopes outside the hierarchy? */
+export function isLimitedScope(value: unknown): value is LimitedScope {
+  return typeof value === "string" && (LIMITED_SCOPES as readonly string[]).includes(value);
+}
+
+/** Type guard: is `value` any valid token scope (hierarchical or limited)? */
+export function isTokenScope(value: unknown): value is TokenScope {
+  return isAccessScope(value) || isLimitedScope(value);
+}
+
 /**
  * True when a token holding `have` is allowed to perform an action that requires
  * `need`. Hierarchy is inclusive: an `admin` token satisfies `write` and `read`;
@@ -38,6 +73,7 @@ export function isAccessScope(value: unknown): value is AccessScope {
  */
 export function scopeSatisfies(have: unknown, need: AccessScope): boolean {
   if (!isAccessScope(have)) return false;
+  if (!isAccessScope(need)) return false;
   return SCOPE_RANK[have] >= SCOPE_RANK[need];
 }
 

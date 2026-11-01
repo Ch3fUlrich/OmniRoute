@@ -28,8 +28,12 @@ export function registerTokens(program) {
     .command("create")
     .description("Create a new access token (requires admin scope)")
     .requiredOption("--name <name>", "Human-readable token name")
-    .option("--scope <scope>", "Scope: read | write | admin", "read")
+    .option("--scope <scope>", "Scope: read | write | admin | logs:read", "read")
     .option("--expires <days>", "Expire after N days (default: never)")
+    .option(
+      "--expires-minutes <minutes>",
+      "Expire after N minutes (required for logs:read, max 1440)"
+    )
     .action(async (opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
       const body = { name: opts.name, scope: opts.scope };
@@ -40,6 +44,14 @@ export function registerTokens(program) {
           process.exit(2);
         }
         body.expiresInDays = days;
+      }
+      if (opts.expiresMinutes) {
+        const minutes = Number(opts.expiresMinutes);
+        if (!Number.isFinite(minutes) || minutes <= 0) {
+          printError("--expires-minutes must be a positive number of minutes.");
+          process.exit(2);
+        }
+        body.expiresInMinutes = minutes;
       }
       const res = await apiFetch("/api/cli/tokens", {
         ...globalOpts,
@@ -108,11 +120,20 @@ export function registerTokens(program) {
 
   tokens
     .command("scopes")
-    .description("Explain the three access-token scopes")
+    .description("Explain access-token scopes")
     .action(() => {
-      printInfo("Access-token scopes (admin ⊃ write ⊃ read):");
-      process.stdout.write("  read   list/inspect only (models, status, logs, usage)\n");
-      process.stdout.write("  write  read + configure/apply (setup-codex, keys add, config set)\n");
-      process.stdout.write("  admin  write + manage (tokens, providers add, services, policy)\n");
+      printInfo("Access-token scopes:");
+      process.stdout.write("  Hierarchical (admin ⊃ write ⊃ read):\n");
+      process.stdout.write("    read       list/inspect only (models, status, logs, usage)\n");
+      process.stdout.write(
+        "    write      read + configure/apply (setup-codex, keys add, config set)\n"
+      );
+      process.stdout.write(
+        "    admin      write + manage (tokens, providers add, services, policy)\n"
+      );
+      process.stdout.write("  Limited (purpose-specific, outside hierarchy):\n");
+      process.stdout.write(
+        "    logs:read  call logs read-only (/api/usage/call-logs; requires --expires-minutes)\n"
+      );
     });
 }
