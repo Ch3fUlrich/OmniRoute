@@ -8,6 +8,10 @@
 
 ---
 
+## [3.8.53-autoos.6] - 2026-11-02
+
+- Merge upstream main 55ccad495c; retain AutoOS patches and read-token health breaker timing. Validation limitations: see docs/autoos-upstream-merge-1102.md.
+
 ## [3.8.53] — TBD
 
 _Living section — cycle opened at the v3.8.52 freeze (parallel-cycle model). Bullets are aggregated from `changelog.d/` fragments at each `/generate-release` phase._

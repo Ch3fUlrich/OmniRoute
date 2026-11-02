@@ -570,7 +570,8 @@ export function buildHealthPayload({
     uptime: system.uptime,
     memoryUsage: system.memoryUsage,
     activeConnections: connections.length,
-    circuitBreakers: {
+    circuitBreakers: providerBreakers,
+    circuitBreakerSummary: {
       ...breakerCounts,
       total:
         breakerCounts.open + breakerCounts.halfOpen + breakerCounts.degraded + breakerCounts.closed,

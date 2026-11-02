@@ -47,6 +47,26 @@ test("management session sees the full health payload", async () => {
   );
 });
 
+test("read-scope CLI token sees detailed health and breaker retry timing", async () => {
+  const { createAccessToken } = await import("../../src/lib/db/accessTokens.ts");
+  const { getCircuitBreaker } = await import("../../src/shared/utils/circuitBreaker.ts");
+  getCircuitBreaker("autoos-read-regression");
+  route.__test_resetMonitoringHealthPayloadCache();
+  const { secret } = createAccessToken({ name: "health-read", scope: "read" });
+  const res = await route.GET(
+    new Request("http://localhost/api/monitoring/health", {
+      headers: { authorization: `Bearer ${secret}` },
+    }) as never
+  );
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.ok(body.version);
+  assert.ok(body.circuitBreakers.length > 0);
+  for (const breaker of body.circuitBreakers) {
+    assert.equal(typeof breaker.retryAfterMs, "number");
+  }
+});
+
 /**
  * The local CLI reaches this PUBLIC-classified route with the machine
  * token, which `runAuthzPipeline` converts into the trusted subject stamp below

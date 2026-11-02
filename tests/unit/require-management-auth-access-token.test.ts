@@ -60,6 +60,9 @@ test("internal service token requires the trusted loopback locality marker", asy
 test("read token: allowed on GET, rejected (403) on a write route", async () => {
   const { secret } = at.createAccessToken({ name: "read-tok", scope: "read" });
   assert.equal(await requireManagementAuth(req("GET", "/api/v1/models", secret)), null);
+  for (const pathname of ["/api/providers", "/api/resilience", "/api/monitoring/health"]) {
+    assert.equal(await requireManagementAuth(req("GET", pathname, secret)), null, pathname);
+  }
 
   const denied = await requireManagementAuth(req("POST", "/api/keys", secret));
   assert.ok(denied, "expected a rejection Response");

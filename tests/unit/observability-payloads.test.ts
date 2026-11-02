@@ -222,7 +222,9 @@ test("buildHealthPayload keeps legacy aliases and adds session/quota observabili
   assert.equal(payload.providerSummary.activeCount, 1);
   assert.equal(payload.providerSummary.monitoredCount, 1);
   assert.equal(payload.activeConnections, 2);
-  assert.equal(payload.circuitBreakers.open, 1);
+  assert.equal(payload.circuitBreakerSummary.open, 1);
+  assert.ok(Array.isArray(payload.circuitBreakers));
+  assert.equal(typeof payload.circuitBreakers[0].retryAfterMs, "number");
   assert.equal(payload.sessions.activeCount, 1);
   assert.equal(payload.sessions.stickyBoundCount, 1);
   assert.equal(payload.quotaMonitor.active, 1);
