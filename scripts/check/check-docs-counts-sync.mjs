@@ -446,7 +446,12 @@ export function makeVersionClaimValidator(expected) {
   //
   // A naive `/\d+\.\d+\.\d+/` would redden on Node (22.22.2), TypeScript and
   // every dependency version; that was the failure mode avoided here.
-  const SEMVER = String.raw`\d+\.\d+\.\d+`;
+  // The capture also absorbs an optional prerelease/build suffix ("-autoos.6",
+  // "+build.1"): the fork's version scheme tags package.json as
+  // "3.8.53-autoos.6", and a bare `\d+\.\d+\.\d+` capture could never equal it,
+  // making every claim permanently stale. The comparison stays exact — a claim
+  // naming "3.8.53" on a "3.8.53-autoos.6" tree is still flagged.
+  const SEMVER = String.raw`\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`;
   // Written as ordinary escaped strings, NOT String.raw templates: a template
   // literal ending in `\*\*` immediately before the closing backtick makes the
   // `**` ambiguous to the reader and easy to corrupt (it once produced `s***`
