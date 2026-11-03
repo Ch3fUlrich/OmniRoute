@@ -345,6 +345,34 @@ async function ensureLlmlinguaOptionals() {
 }
 
 /**
+ * Materialise `node_modules/better-sqlite3/build/Release/better_sqlite3.node`.
+ *
+ * better-sqlite3 v13 ships prebuilt binaries and its binding.gyp deliberately
+ * turns npm's implicit `node-gyp rebuild` into a no-op whenever a prebuild for
+ * the host exists (`prebuild_exists` probe), so a plain `npm ci` installs the
+ * package but never produces `build/Release/`. Verification and packaging steps
+ * expect that layout (see the Dockerfile's
+ * `test -f node_modules/better-sqlite3/build/Release/better_sqlite3.node`), so
+ * place the host prebuild there when the implicit rebuild left it absent.
+ * Non-fatal: on targets without a prebuild, binding.gyp compiles from source
+ * during `npm ci` itself and this is a no-op.
+ */
+function ensureBetterSqliteBuildRelease() {
+  const pkgDir = join(ROOT, "node_modules", "better-sqlite3");
+  const target = join(pkgDir, "build", "Release", "better_sqlite3.node");
+  if (!existsSync(pkgDir) || existsSync(target)) return;
+  const prebuild = join(pkgDir, "prebuilds", `${getBetterSqlitePrebuildTarget()}.node`);
+  if (!existsSync(prebuild)) return;
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(prebuild, target);
+    console.log(`  ✅ better-sqlite3 native binary materialised in build/Release (host prebuild).`);
+  } catch (err) {
+    console.warn(`  ⚠️  Could not materialise better-sqlite3 build/Release: ${err.message}`);
+  }
+}
+
+/**
  * Preflight check for development installs (when standalone dist/ bundle is not present).
  * Warns or errors if critical native dependencies like better-sqlite3 were skipped by npm >= 11
  * allowScripts restrictions.
@@ -395,6 +423,7 @@ async function ensureStandaloneRuntimePackages() {
 }
 
 await verifyDevNativeModules();
+ensureBetterSqliteBuildRelease();
 await fixBetterSqliteBinary();
 await fixWreqJsBinary();
 await fixPlaywrightAndroid({ rootDir: ROOT });

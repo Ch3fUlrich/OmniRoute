@@ -4,6 +4,7 @@
 
 ---
 
+
 > OmniRoute is a free, open-source AI Gateway that acts as a universal API proxy for multi-provider LLMs. It provides smart routing, automatic fallback, load balancing, and format translation across 376 AI providers — all through a single OpenAI-compatible endpoint. Includes a built-in MCP Server (110 tools), A2A v0.3 protocol, Memory/Skills systems, Cloud Agents (codex, cursor, devin, jules), Guardrails framework, and an Electron desktop app.
 
 ## Overview
@@ -12,7 +13,7 @@ OmniRoute solves the problem of managing multiple AI provider subscriptions, quo
 
 **Key value:** One endpoint (`http://localhost:20128/v1`), unlimited models, zero downtime, minimal cost.
 
-**Current version:** 3.8.53
+**Current version:** 3.8.53-autoos.6
 
 ## Tech Stack
 
@@ -278,7 +279,7 @@ OmniRoute solves the problem of managing multiple AI provider subscriptions, quo
 └── .env.example                  # Environment variable template
 ```
 
-## Key Features (v3.8.53)
+## Key Features (v3.8.53-autoos.6)
 
 ### Core Proxy
 - **376 AI providers** with automatic format translation
