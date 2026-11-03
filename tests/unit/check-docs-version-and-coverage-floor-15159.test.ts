@@ -80,6 +80,16 @@ test("G-06: a claim matching the CURRENT version is accepted in every phrasing",
   }
 });
 
+test("G-06: the claim is end-anchored — trailing junk fails, the exact claim passes", () => {
+  // Prefix-exact matching let "3.8.53-autoos.6!" pass as its own prefix
+  // "3.8.53-autoos.6"; the claim token must be captured whole so the exact
+  // comparison rejects it (a bare trailing "+" is likewise junk, not a claim).
+  const v = validateVersion("3.8.53-autoos.6");
+  assert.equal(v("Current version: 3.8.53-autoos.6!").ok, false);
+  assert.equal(v("Current version: 3.8.53-autoos.6+").ok, false);
+  assert.equal(v("Current version: 3.8.53-autoos.6").ok, true);
+});
+
 test("G-06: a 'v3.8.51+' lower-bound claim is caught, not treated as a range", () => {
   // The `v3.8.51+` cell is a compatibility floor, not the shipped version. It
   // must still be reported: the audit listed it as one of the four leaks.

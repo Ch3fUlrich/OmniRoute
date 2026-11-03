@@ -13,17 +13,26 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { NextRequest } from "next/server";
 
+const ORIGINAL_DATA_DIR = process.env.DATA_DIR;
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omni-health-read-token-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
 const route = await import("../../src/app/api/monitoring/health/route.ts");
 const { createAccessToken } = await import("../../src/lib/db/accessTokens.ts");
-const { getCircuitBreaker } = await import("../../src/shared/utils/circuitBreaker.ts");
+const { getCircuitBreaker, resetAllCircuitBreakers } = await import(
+  "../../src/shared/utils/circuitBreaker.ts"
+);
 
 test.after(() => {
+  // Dispose the breaker this file registered and restore DATA_DIR so an
+  // isolation=none run cannot inherit either from this file.
+  resetAllCircuitBreakers();
   core.resetDbInstance();
+  if (ORIGINAL_DATA_DIR === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = ORIGINAL_DATA_DIR;
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
@@ -35,17 +44,28 @@ test("read-scope CLI token: GET /api/monitoring/health → 200 with circuitBreak
   const res = await route.GET(
     new Request("http://localhost/api/monitoring/health", {
       headers: { authorization: `Bearer ${secret}` },
-    }) as never
+    }) as unknown as NextRequest
   );
   assert.equal(res.status, 200);
-  const body = (await res.json()) as { circuitBreakers?: Array<{ retryAfterMs?: unknown }> };
+  const body = (await res.json()) as {
+    circuitBreakers?: Array<{ provider?: unknown; retryAfterMs?: unknown }>;
+  };
   assert.ok(Array.isArray(body.circuitBreakers), "read token must see the circuitBreakers array");
-  assert.ok(body.circuitBreakers.length > 0, "at least the registered breaker must be listed");
+  // Assert the retry-timing contract on the breaker THIS test registers, by
+  // name (the payload carries the registered name in `provider`): unrelated
+  // module-registered entries must not be able to fail (or satisfy) it.
+  const registered = body.circuitBreakers.find(
+    (breaker) => breaker.provider === "health-read-token-r3"
+  );
+  assert.ok(registered, "the breaker registered by this test must be listed by name");
+  assert.equal(
+    typeof registered.retryAfterMs,
+    "number",
+    "the registered breaker carries numeric retryAfterMs retry timing"
+  );
+  // Global shape check: every listed entry is breaker-shaped.
   for (const breaker of body.circuitBreakers) {
-    assert.equal(
-      typeof breaker.retryAfterMs,
-      "number",
-      "every breaker entry carries numeric retryAfterMs retry timing"
-    );
+    assert.equal(typeof breaker.provider, "string", "every breaker entry is named");
+    assert.ok("retryAfterMs" in breaker, "every breaker entry exposes retryAfterMs");
   }
 });
