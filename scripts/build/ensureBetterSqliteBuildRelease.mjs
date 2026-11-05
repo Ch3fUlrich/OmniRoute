@@ -35,8 +35,10 @@ export function ensureBetterSqliteBuildRelease({
     warn("Skipping incompatible better-sqlite3 host prebuild; rebuilding from source.");
     try {
       rebuild(pkgDir);
-    } catch {
-      warn("Could not rebuild better-sqlite3; a working native toolchain is required.");
+    } catch (err) {
+      warn(
+        `Could not rebuild better-sqlite3; node-gyp and a working native toolchain are required: ${err.message}`
+      );
     }
     return;
   }

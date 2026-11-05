@@ -23,6 +23,8 @@ omniroute configure codex                # ← writes a local Codex profile from
 
 ---
 
+Safe-method reads (GET/HEAD/OPTIONS) keep the base method policy, including providers list, client, models and expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota (connection resetAt). Sensitive admin surfaces and key reveal remain admin; provider connection-by-id reads require admin because they may reveal credentials. Mutations retain write/admin requirements; no prefix-wide status exceptions.
+
 ## How it works
 
 ```

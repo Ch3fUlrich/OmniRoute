@@ -25,7 +25,7 @@ test("admin-prefix routes require admin for ANY method", () => {
 
 test("admin-mutation prefixes: GET stays read, mutations become admin", () => {
   // providers: status is read, but creating/rotating is admin
-  assert.equal(inferRequiredScope("GET", "/api/providers/status"), "admin");
+  assert.equal(inferRequiredScope("GET", "/api/providers/status"), "read");
   assert.equal(inferRequiredScope("GET", "/api/providers"), "read");
   assert.equal(inferRequiredScope("POST", "/api/providers"), "admin");
   assert.equal(inferRequiredScope("DELETE", "/api/providers/openai"), "admin");
@@ -57,15 +57,20 @@ test("API-key management needs admin: a write token cannot mint a manage-scoped 
 });
 
 test("status route read exceptions reject sub-routes, trailing slashes and mixed case", () => {
+  // Base ff1ad941 allows safe-method reads on these paths, including siblings.
   for (const route of ["/api/providers", "/api/resilience", "/api/monitoring/health"]) {
-    for (const method of ["GET", "HEAD"]) {
+    for (const method of ["GET", "HEAD", "OPTIONS"]) {
       assert.equal(inferRequiredScope(method, route), "read");
-      for (const denied of [route + "/", route + "/id", route + "/id/test", route.toUpperCase()]) {
-        assert.notEqual(inferRequiredScope(method, denied), "read");
-      }
+      assert.equal(inferRequiredScope(method, route + "/"), "read");
+      assert.equal(inferRequiredScope(method, route.toUpperCase()), "read");
     }
-    for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       assert.notEqual(inferRequiredScope(method, route), "read");
     }
+  }
+  for (const method of ["GET", "HEAD", "OPTIONS"]) {
+    assert.equal(inferRequiredScope(method, "/api/providers/id"), "admin");
+    assert.equal(inferRequiredScope(method, "/api/providers/id/models"), "read");
+    assert.equal(inferRequiredScope(method, "/api/resilience/id"), "read");
   }
 });

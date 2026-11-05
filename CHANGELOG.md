@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 - **fix(security):** attempt to restrict OMP credential directories to 0700 and agent.db to 0600, warning and continuing on chmod failure; Windows chmod does not enforce owner-only ACLs. Check host SQLite prebuild OS/architecture and loadability before copying during postinstall; log rejected prebuilds and attempt a source rebuild.
-- **fix(cli):** monitoring health keeps `circuitBreakers` as a provider array with `retryAfterMs` (also available as `providerBreakers`); aggregate `open`, `halfOpen`, `degraded`, `closed`, and `total` counts live in `circuitBreakerSummary`. CLI health labels summary buckets as aggregate counts, not components, and supports older array-only responses. Read-scope CLI tokens may access GET/HEAD `/api/providers`, `/api/resilience`, and `/api/monitoring/health`, only on those exact case-sensitive paths (no trailing slash or sub-routes), never mutations. OPTIONS now requires admin for `/api/providers` and write for the other two status paths rather than read.
+- **fix(cli):** monitoring health keeps `circuitBreakers` as a provider array with `retryAfterMs` (also available as `providerBreakers`); aggregate `open`, `halfOpen`, `degraded`, `closed`, and `total` counts live in `circuitBreakerSummary`. CLI health labels summary buckets as aggregate counts, not components, and supports older array-only responses.
 
 - **test(db):** pin migration 207's intentional `opencode`/`oc` to `opencode-zen` credential-preserving move and document keyless deletion and combo model-id updates.
 

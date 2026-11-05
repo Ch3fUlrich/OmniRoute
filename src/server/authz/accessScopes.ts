@@ -9,7 +9,8 @@ import { type AccessScope } from "@/lib/accessTokens/scopes";
  * with three admin overrides:
  *   - ADMIN_SCOPE_PREFIXES: admin for ANY method (inherently sensitive surfaces).
  *   - ADMIN_MUTATION_PREFIXES: admin only when mutating; GET/HEAD stay read so a
- *     `read` token can still inspect status under these prefixes.
+ *     `read` token can still inspect status under these prefixes, except provider
+ *     connection-by-id reads (which may reveal credentials) require admin.
  *   - ADMIN_MUTATION_EXACT_PATHS: same as above, but for one route only (no sub-routes).
  *
  * This covers every existing management route with zero per-route edits. A NEW
@@ -31,7 +32,7 @@ export const ADMIN_SCOPE_PREFIXES: readonly string[] = [
   "/api/mcp", // MCP process surface (also loopback-blocked)
 ];
 
-/** Require `admin` only for mutating methods; GET/HEAD under these stay `read`. */
+/** Mutations require admin; safe reads stay read except credential-bearing provider detail. */
 export const ADMIN_MUTATION_PREFIXES: readonly string[] = [
   "/api/providers", // POST add provider / rotate key = admin; GET status = read
   "/api/cli-tools/apply", // writes config onto the host filesystem
@@ -80,12 +81,28 @@ export function inferRequiredScope(method: string, path: string): AccessScope {
   const p = path || "/";
 
   if (matchesPrefix(p, ADMIN_SCOPE_PREFIXES)) return "admin";
-  // Only exact, case-sensitive status paths are delegated to read tokens.
-  const statusPaths = ["/api/providers", "/api/resilience", "/api/monitoring/health"];
-  if (matchesPrefix(p.toLowerCase(), statusPaths)) {
-    if (statusPaths.includes(p) && (m === "GET" || m === "HEAD")) return "read";
-    return matchesPrefix(p.toLowerCase(), ["/api/providers"]) ? "admin" : "write";
-  }
+  // The dynamic connection detail route can reveal credentials. Static siblings
+  // and deeper routes keep the base method policy; never widen a whole prefix.
+  const providerDetail = /^\/api\/providers\/([^/]+)\/?$/.exec(p);
+  const providerStaticReads = [
+    "client",
+    "expiration",
+    "quota-windows",
+    "status",
+    "codex-cooldown",
+    "health-autopilot",
+    "free-onboarding",
+    "deprecated",
+    "bulk-web-session",
+    "openrouter-stats",
+    "health-matrix",
+    "bulk",
+    "validate",
+    "import",
+    "web-session-contract",
+    "test-batch",
+  ];
+  if (providerDetail && !providerStaticReads.includes(providerDetail[1])) return "admin";
   // Revealing a key hands back its plaintext secret — never a `read` operation.
   if (matchesPrefix(p, ["/api/keys"]) && /\/reveal\/?$/.test(p)) return "admin";
 

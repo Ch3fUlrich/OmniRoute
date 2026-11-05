@@ -523,7 +523,13 @@ export async function runProvidersStatusCommand(opts = {}) {
     acceptNotOk: true,
     retry: false,
   }).catch(() => null);
-  const expirationData = expirationRes?.ok ? await expirationRes.json().catch(() => ({})) : {};
+  if (!expirationRes?.ok) {
+    console.error(
+      `Could not fetch provider expiration metadata: ${expirationRes ? `HTTP ${expirationRes.status}` : "request failed"}`
+    );
+    return 1;
+  }
+  const expirationData = await expirationRes.json();
   const expirations = new Map(
     (expirationData.list || []).map((entry) => [entry.connectionId, entry])
   );
