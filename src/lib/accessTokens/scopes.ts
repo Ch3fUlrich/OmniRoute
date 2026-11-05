@@ -7,10 +7,15 @@
  *
  * Hierarchy (admin ⊃ write ⊃ read):
  *   - read  : list/inspect only (models list, providers status, logs, usage, cost)
- * Safe-method reads (GET/HEAD/OPTIONS) keep the base method policy, including providers list, client, models and expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota (connection resetAt). Sensitive admin surfaces and key reveal remain admin; provider connection-by-id reads require admin because they may reveal credentials. Mutations retain write/admin requirements; no prefix-wide status exceptions.
  *   - write : read + configure/apply (setup-codex, keys add, config set, combo edit)
  *   - admin : write + sensitive management (tokens create/revoke, providers add,
  *             services install/start, policy, oauth)
+ *
+ * Safe-method reads (GET/HEAD/OPTIONS) keep the base method policy, including providers
+ * list, client, models and expiration, resilience/model-cooldowns, monitoring health,
+ * and /api/usage/quota (connection resetAt). Sensitive admin surfaces and key reveal
+ * remain admin; provider connection-by-id reads require admin because they may reveal
+ * credentials. Mutations retain write/admin requirements; no prefix-wide exceptions.
  *
  * Limited scopes (purpose-specific, outside the read<write<admin hierarchy):
  *   - logs:read : read-only access strictly to /api/usage/call-logs and /api/cli/whoami.

@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- **fix(authz):** preserve read-token access to provider lists (always masked for access tokens), resilience/model-cooldowns, monitoring health, and usage quota. Provider connection details and key reveal require admin scope; only verified dashboard admin sessions may reveal provider-list keys when enabled. Mutations retain their existing write/admin requirements.
 - **fix(security):** attempt to restrict OMP credential directories to 0700 and agent.db to 0600, warning and continuing on chmod failure; Windows chmod does not enforce owner-only ACLs. Check host SQLite prebuild OS/architecture and loadability before copying during postinstall; log rejected prebuilds and attempt a source rebuild.
 - **fix(cli):** monitoring health keeps `circuitBreakers` as a provider array with `retryAfterMs` (also available as `providerBreakers`); aggregate `open`, `halfOpen`, `degraded`, `closed`, and `total` counts live in `circuitBreakerSummary`. CLI health labels summary buckets as aggregate counts, not components, and supports older array-only responses.
 

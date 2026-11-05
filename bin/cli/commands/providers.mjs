@@ -523,15 +523,19 @@ export async function runProvidersStatusCommand(opts = {}) {
     acceptNotOk: true,
     retry: false,
   }).catch(() => null);
-  if (!expirationRes?.ok) {
-    console.error(
-      `Could not fetch provider expiration metadata: ${expirationRes ? `HTTP ${expirationRes.status}` : "request failed"}`
-    );
+  if (expirationRes && [401, 403].includes(expirationRes.status)) {
+    console.error(t("providers.status.needsAdminScope"));
     return 1;
   }
-  const expirationData = await expirationRes.json();
+  const expirationData = expirationRes?.ok ? await expirationRes.json().catch(() => null) : null;
+  if (!expirationData || !Array.isArray(expirationData.list)) {
+    process.stderr.write(`${t("providers.status.expirationUnavailable")}\n`);
+  }
   const expirations = new Map(
-    (expirationData.list || []).map((entry) => [entry.connectionId, entry])
+    (Array.isArray(expirationData?.list) ? expirationData.list : []).map((entry) => [
+      entry.connectionId,
+      entry,
+    ])
   );
   // Expiration is optional metadata, not the inventory of configured connections.
   // Project public fields explicitly: the management API may reveal API keys by policy.

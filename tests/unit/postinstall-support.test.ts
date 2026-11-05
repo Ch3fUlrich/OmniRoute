@@ -52,6 +52,15 @@ test("prebuild compatible copy, missing no-op, Termux mapping and default rebuil
       warn: (message) => warnings.push(message),
     });
     assert.ok(warnings.some((message) => message.includes("node-gyp unavailable")));
+    ensureBetterSqliteBuildRelease({
+      rootDir: root,
+      compatible: () => false,
+      rebuild: () => {
+        throw "non-Error failure";
+      },
+      warn: (message) => warnings.push(message),
+    });
+    assert.ok(warnings.some((message) => message.includes("non-Error failure")));
   } finally {
     if (oldTermux === undefined) delete process.env.TERMUX_VERSION;
     else process.env.TERMUX_VERSION = oldTermux;

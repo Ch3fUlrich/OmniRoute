@@ -83,12 +83,12 @@ export function inferRequiredScope(method: string, path: string): AccessScope {
   if (matchesPrefix(p, ADMIN_SCOPE_PREFIXES)) return "admin";
   // The dynamic connection detail route can reveal credentials. Static siblings
   // and deeper routes keep the base method policy; never widen a whole prefix.
-  const providerDetail = /^\/api\/providers\/([^/]+)\/?$/.exec(p);
+  const providerReadPath = p.replace(/\/+/g, "/").replace(/\/+$/, "").toLowerCase();
+  const providerDetail = /^\/api\/providers\/([^/]+)$/.exec(providerReadPath);
   const providerStaticReads = [
     "client",
     "expiration",
     "quota-windows",
-    "status",
     "codex-cooldown",
     "health-autopilot",
     "free-onboarding",
@@ -102,7 +102,8 @@ export function inferRequiredScope(method: string, path: string): AccessScope {
     "web-session-contract",
     "test-batch",
   ];
-  if (providerDetail && !providerStaticReads.includes(providerDetail[1])) return "admin";
+  if (READ_METHODS.has(m) && providerDetail && !providerStaticReads.includes(providerDetail[1]))
+    return "admin";
   // Revealing a key hands back its plaintext secret — never a `read` operation.
   if (matchesPrefix(p, ["/api/keys"]) && /\/reveal\/?$/.test(p)) return "admin";
 

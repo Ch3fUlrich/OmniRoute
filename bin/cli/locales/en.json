@@ -82,7 +82,9 @@
       "providerOpt": "Filter by provider name",
       "header": "ID         Provider       Name                     Expiry Status  Test Status  Cooldown Until",
       "noData": "No provider connection data available.",
-      "requiresServer": "providers status requires the OmniRoute server to be running."
+      "requiresServer": "providers status requires the OmniRoute server to be running.",
+      "needsAdminScope": "Provider expiration metadata needs admin scope.",
+      "expirationUnavailable": "Warning: provider expiration metadata unavailable; listing connections without it."
     }
   },
   "keys": {

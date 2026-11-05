@@ -37,7 +37,7 @@ export function ensureBetterSqliteBuildRelease({
       rebuild(pkgDir);
     } catch (err) {
       warn(
-        `Could not rebuild better-sqlite3; node-gyp and a working native toolchain are required: ${err.message}`
+        `Could not rebuild better-sqlite3; node-gyp and a working native toolchain are required: ${String(err?.message ?? err)}`
       );
     }
     return;
@@ -47,6 +47,8 @@ export function ensureBetterSqliteBuildRelease({
     copyFileSync(prebuild, target);
     console.log(`  ✅ better-sqlite3 native binary materialised in build/Release (host prebuild).`);
   } catch (err) {
-    console.warn(`  ⚠️  Could not materialise better-sqlite3 build/Release: ${err.message}`);
+    console.warn(
+      `  ⚠️  Could not materialise better-sqlite3 build/Release: ${String(err?.message ?? err)}`
+    );
   }
 }

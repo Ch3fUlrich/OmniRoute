@@ -120,6 +120,37 @@ test("GET /api/providers masks every extraApiKeys entry with the apiKey mask", a
   assert.deepEqual(psdOf(listed).tags, ["pool"], "non-secret providerSpecificData is intact");
 });
 
+test("provider list reveal is dashboard-session-only, never access-token scope", async () => {
+  const { createAccessToken } = await import("../../src/lib/db/accessTokens.ts");
+  const created = await createKeyedConnection();
+  process.env.ALLOW_API_KEY_REVEAL = "true";
+  try {
+    for (const scope of ["read", "admin"] as const) {
+      const { secret } = createAccessToken({ name: `reveal-${scope}`, scope });
+      const request = new Request("http://localhost/api/providers", {
+        headers: { authorization: `Bearer ${secret}` },
+      });
+      const response = await listRoute.GET(request);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      const listed = body.connections.find((c: { id: string }) => c.id === created.id);
+      assert.equal(listed.apiKey === created.apiKey, false, "primary key must stay masked");
+      assert.deepEqual(listed.providerSpecificData.extraApiKeys, [
+        maskStoredApiKey(EXTRA_ONE),
+        maskStoredApiKey(EXTRA_TWO),
+      ]);
+    }
+    const listed = (await getList()).find((c) => c.id === created.id);
+    assert.equal(listed?.apiKey === created.apiKey, true, "dashboard session may reveal");
+    assert.equal(
+      JSON.stringify(psdOf(listed!).extraApiKeys) === JSON.stringify([EXTRA_ONE, EXTRA_TWO]),
+      true
+    );
+  } finally {
+    delete process.env.ALLOW_API_KEY_REVEAL;
+  }
+});
+
 test("GET /api/providers/[id] masks extraApiKeys the same way", async () => {
   const created = await createKeyedConnection();
   const detail = await getDetail(created.id);

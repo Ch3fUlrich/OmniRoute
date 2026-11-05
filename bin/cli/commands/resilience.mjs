@@ -102,7 +102,7 @@ export function registerResilience(program) {
     .option("--provider <p>", t("resilience.lockouts.provider"))
     .option("--model <m>", t("resilience.lockouts.model"))
     .action(async (opts, cmd) => {
-      const res = await apiFetch("/api/resilience/model-cooldowns");
+      const res = await apiFetch("/api/resilience/model-cooldowns", cmd.optsWithGlobals());
       if (!res.ok) {
         process.stderr.write(`Error: ${res.status}\n`);
         process.exit(1);

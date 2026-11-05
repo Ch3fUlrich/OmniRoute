@@ -71,7 +71,8 @@ import {
   normalizeChatGptWebStorageState,
 } from "@omniroute/open-sse/utils/chatgptWebExecutorAdapter.ts";
 import { applyOperatorActivationIntent } from "@/lib/providers/operatorDisable";
-import { getRequestPeerLocality } from "@/shared/utils/apiAuth";
+import { getRequestPeerLocality, isDashboardSessionAuthenticated } from "@/shared/utils/apiAuth";
+import { ACCESS_TOKEN_PREFIX, extractBearer } from "@/server/authz/accessTokenAuth";
 import { hydrateCompatibleNodeCreation } from "@/lib/providers/compatibleNodeCreation";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
 
@@ -138,7 +139,11 @@ export async function GET(request: Request) {
 
     const connections = await getProviderConnections(filter, limit, offset);
     const total = getProviderConnectionsCount(filter);
-    const revealKeys = isApiKeyRevealEnabled();
+    // A scoped token never reveals credentials, even alongside a session cookie.
+    const revealKeys =
+      isApiKeyRevealEnabled() &&
+      !extractBearer(request)?.startsWith(ACCESS_TOKEN_PREFIX) &&
+      (await isDashboardSessionAuthenticated(request));
 
     const quotaCache = connections.some((c) => c.provider === "codex")
       ? getAllProviderLimitsCache()
@@ -451,7 +456,8 @@ export async function POST(request: Request) {
     delete result.apiKey;
     if (result.providerSpecificData) {
       result.providerSpecificData = sanitizeProviderSpecificDataForResponse(
-        result.providerSpecificData
+        result.providerSpecificData,
+        { revealKeys: false }
       );
     }
 

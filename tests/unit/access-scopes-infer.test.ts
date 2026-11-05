@@ -24,8 +24,8 @@ test("admin-prefix routes require admin for ANY method", () => {
 });
 
 test("admin-mutation prefixes: GET stays read, mutations become admin", () => {
-  // providers: status is read, but creating/rotating is admin
-  assert.equal(inferRequiredScope("GET", "/api/providers/status"), "read");
+  // No static status route exists: this is a credential-bearing connection id.
+  assert.equal(inferRequiredScope("GET", "/api/providers/status"), "admin");
   assert.equal(inferRequiredScope("GET", "/api/providers"), "read");
   assert.equal(inferRequiredScope("POST", "/api/providers"), "admin");
   assert.equal(inferRequiredScope("DELETE", "/api/providers/openai"), "admin");

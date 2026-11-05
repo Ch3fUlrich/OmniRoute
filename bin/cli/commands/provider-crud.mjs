@@ -210,7 +210,9 @@ async function readRemoteConnectionById(id, opts) {
     retry: false,
   });
   if (!response.ok)
-    throw new Error(`Provider mutation read-back failed: ${await readApiError(response)}`);
+    throw new Error(
+      `Provider mutation read-back failed: ${[401, 403].includes(response.status) ? "needs admin scope; " : ""}${await readApiError(response)}`
+    );
   const body = await response.json().catch(() => ({}));
   const connection = body?.connection;
   if (!connection || String(connection.id || "") !== String(id)) {
@@ -227,7 +229,9 @@ async function confirmRemoteConnectionRemoved(id, opts) {
   });
   if (response.status === 404) return;
   if (!response.ok) {
-    throw new Error(`Provider removal read-back failed: ${await readApiError(response)}`);
+    throw new Error(
+      `Provider removal read-back failed: ${[401, 403].includes(response.status) ? "needs admin scope; " : ""}${await readApiError(response)}`
+    );
   }
   const body = await response.json().catch(() => ({}));
   if (body?.connection) {
