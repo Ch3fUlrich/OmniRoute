@@ -74,9 +74,10 @@ export async function runHealthCommand(opts = {}) {
       console.log(t("health.requests", { count: health.activeConnections }));
     }
 
-    if (health.circuitBreakers && opts.verbose) {
+    const breakerSummary = health.circuitBreakerSummary || health.circuitBreakers;
+    if (breakerSummary && opts.verbose) {
       console.log("\n  \x1b[1mCircuit Breakers\x1b[0m");
-      const { open = 0, halfOpen = 0, closed = 0 } = health.circuitBreakers;
+      const { open = 0, halfOpen = 0, closed = 0 } = breakerSummary;
       console.log(`    \x1b[32m● closed\x1b[0m     ${closed}`);
       console.log(`    \x1b[33m○ half-open\x1b[0m  ${halfOpen}`);
       console.log(`    \x1b[31m○ open\x1b[0m       ${open}`);
@@ -107,7 +108,8 @@ export async function runHealthComponentsCommand(opts = {}) {
       return 1;
     }
     const health = await res.json();
-    const components = health.components || health.circuitBreakers || {};
+    const components =
+      health.components || health.circuitBreakerSummary || health.circuitBreakers || {};
     for (const [name, info] of Object.entries(components)) {
       const status =
         typeof info === "object" ? info.state || info.status || "unknown" : String(info);

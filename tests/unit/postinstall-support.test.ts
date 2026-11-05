@@ -1,10 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { hasStandaloneAppBundle, isTermux } from "../../scripts/build/postinstallSupport.mjs";
+
+test("host SQLite prebuild compatibility is checked before materialising build/Release", () => {
+  const source = readFileSync(
+    new URL("../../scripts/build/postinstall.mjs", import.meta.url),
+    "utf8"
+  );
+  const body = source.slice(source.indexOf("function ensureBetterSqliteBuildRelease()"));
+  const copy = body.indexOf("copyFileSync(prebuild, target)");
+  const check = body.indexOf("isNativeBinaryCompatible(prebuild,");
+  assert.ok(check >= 0 && check < copy);
+  assert.match(
+    body.slice(check, copy),
+    /runtimePlatform: isTermux\(\) \? "android" : process.platform/
+  );
+  assert.match(body.slice(check, copy), /skipDlopen: true/);
+  assert.match(body.slice(check, copy), /\)\s*return;/);
+});
 
 test("hasStandaloneAppBundle returns false for source checkout without standalone app", () => {
   const root = mkdtempSync(join(tmpdir(), "omniroute-postinstall-src-"));

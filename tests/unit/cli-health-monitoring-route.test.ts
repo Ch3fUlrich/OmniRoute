@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { runHealthCommand } from "../../bin/cli/commands/health.mjs";
+import { runHealthCommand, runHealthComponentsCommand } from "../../bin/cli/commands/health.mjs";
 
 // Regression test for GH #6677: `omniroute health` calls GET /api/health, but the
 // real server only implements GET /api/monitoring/health (plus the sub-routes
@@ -25,7 +25,8 @@ test.before(async () => {
           version: "3.8.47",
           uptime: 123,
           activeConnections: 0,
-          circuitBreakers: { open: 0, halfOpen: 0, closed: 3 },
+          circuitBreakers: [{ provider: "fixture", state: "OPEN", retryAfterMs: 1000 }],
+          circuitBreakerSummary: { open: 1, halfOpen: 0, degraded: 0, closed: 3, total: 4 },
           memoryUsage: { rss: 1000, heapUsed: 500 },
         })
       );
@@ -43,6 +44,23 @@ test.before(async () => {
     baseUrl = `http://127.0.0.1:${address.port}`;
   }
   process.env.OMNIROUTE_BASE_URL = baseUrl;
+});
+
+test("health views use aggregate counts rather than treating the breaker array as counts", async () => {
+  const originalLog = console.log;
+  const lines: string[] = [];
+  console.log = (...args: unknown[]) => lines.push(args.map(String).join(" "));
+  try {
+    assert.equal(await runHealthCommand({ verbose: true }), 0);
+    assert.ok(lines.some((line) => /closed.*3/.test(line)));
+    assert.ok(lines.some((line) => /open.*1/.test(line)));
+    lines.length = 0;
+    assert.equal(await runHealthComponentsCommand({}), 0);
+    assert.ok(lines.some((line) => /closed.*3/.test(line)));
+    assert.ok(!lines.some((line) => line.includes("unknown")));
+  } finally {
+    console.log = originalLog;
+  }
 });
 
 test.after(async () => {

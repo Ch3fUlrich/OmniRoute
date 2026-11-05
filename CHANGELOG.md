@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- **fix(security):** restrict OMP credential directories to 0700 and agent.db to 0600; validate host SQLite prebuild compatibility before copying during postinstall.
+- **fix(cli):** monitoring health keeps `circuitBreakers` as a provider array with `retryAfterMs` (also available as `providerBreakers`); aggregate `open`, `halfOpen`, `degraded`, `closed`, and `total` counts live in `circuitBreakerSummary`. Both CLI health views now use that summary. Read-scope CLI tokens may access GET/HEAD `/api/providers`, `/api/resilience`, and `/api/monitoring/health`, never mutations.
+
 - **test(db):** pin migration 207's intentional `opencode`/`oc` to `opencode-zen` credential-preserving move and document keyless deletion and combo model-id updates.
 
 ### ✨ New Features

@@ -62,6 +62,14 @@ test("read token: allowed on GET, rejected (403) on a write route", async () => 
   assert.equal(await requireManagementAuth(req("GET", "/api/v1/models", secret)), null);
   for (const pathname of ["/api/providers", "/api/resilience", "/api/monitoring/health"]) {
     assert.equal(await requireManagementAuth(req("GET", pathname, secret)), null, pathname);
+    assert.equal(await requireManagementAuth(req("HEAD", pathname, secret)), null, pathname);
+    for (const method of ["POST", "PUT", "PATCH", "DELETE", "OPTIONS"]) {
+      assert.equal(
+        (await requireManagementAuth(req(method, pathname, secret)))?.status,
+        403,
+        `${method} ${pathname}`
+      );
+    }
   }
 
   const denied = await requireManagementAuth(req("POST", "/api/keys", secret));

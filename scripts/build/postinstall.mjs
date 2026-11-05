@@ -363,6 +363,13 @@ function ensureBetterSqliteBuildRelease() {
   if (!existsSync(pkgDir) || existsSync(target)) return;
   const prebuild = join(pkgDir, "prebuilds", `${getBetterSqlitePrebuildTarget()}.node`);
   if (!existsSync(prebuild)) return;
+  if (
+    !isNativeBinaryCompatible(prebuild, {
+      runtimePlatform: isTermux() ? "android" : process.platform,
+      skipDlopen: true,
+    })
+  )
+    return;
   try {
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(prebuild, target);

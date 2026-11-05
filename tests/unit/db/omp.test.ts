@@ -108,6 +108,20 @@ describe("db/omp.ts — getOmpCredentials", { skip }, () => {
 });
 
 describe("db/omp.ts — saveOmpCredentials + getOmpCredentials round trip", { skip }, () => {
+  for (const operation of ["save", "delete"]) {
+    it(`${operation} tightens existing directory and database permissions`, () => {
+      seedOmpDb();
+      fs.chmodSync(path.dirname(getOmpDbPath()), 0o755);
+      fs.chmodSync(getOmpDbPath(), 0o644);
+      if (operation === "save") {
+        saveOmpCredentials(PROVIDER_ID, "fixture-key", "http://localhost:20128/v1");
+      } else {
+        deleteOmpCredentials(PROVIDER_ID);
+      }
+      assert.equal(fs.statSync(path.dirname(getOmpDbPath())).mode & 0o777, 0o700);
+      assert.equal(fs.statSync(getOmpDbPath()).mode & 0o777, 0o600);
+    });
+  }
   it("persists apiKey/baseUrl so a subsequent read sees them", () => {
     seedOmpDb();
 

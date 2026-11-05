@@ -80,6 +80,11 @@ export function inferRequiredScope(method: string, path: string): AccessScope {
   const p = path || "/";
 
   if (matchesPrefix(p, ADMIN_SCOPE_PREFIXES)) return "admin";
+  // D-3633 status-route access is GET/HEAD only, not the general OPTIONS rule.
+  if (matchesExactPath(p, ["/api/providers", "/api/resilience", "/api/monitoring/health"])) {
+    if (m === "GET" || m === "HEAD") return "read";
+    return matchesExactPath(p, ["/api/providers"]) ? "admin" : "write";
+  }
   // Revealing a key hands back its plaintext secret — never a `read` operation.
   if (matchesPrefix(p, ["/api/keys"]) && /\/reveal\/?$/.test(p)) return "admin";
 

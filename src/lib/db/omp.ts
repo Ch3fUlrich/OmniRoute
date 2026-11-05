@@ -23,6 +23,21 @@ function databaseOptions(readonly = false) {
 const getOmpDir = () => path.join(os.homedir(), ".omp", "agent");
 const getOmpDbPath = () => path.join(getOmpDir(), "agent.db");
 
+function secureOmpDbPath() {
+  const dbPath = getOmpDbPath();
+  const dir = path.dirname(dbPath);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  // Create securely before SQLite opens it, and tighten existing CLI databases.
+  const fd = fs.openSync(dbPath, "a", 0o600);
+  try {
+    fs.fchmodSync(fd, 0o600);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return dbPath;
+}
+
 export function getOmpCredentials(providerId: string) {
   const Database = getDatabaseClass();
   if (!Database) return { hasOmniRoute: false, baseUrl: null, apiKey: null };
@@ -49,8 +64,7 @@ export function getOmpCredentials(providerId: string) {
 export function saveOmpCredentials(providerId: string, apiKey: string, baseUrl: string) {
   const Database = getDatabaseClass();
   if (!Database) return;
-  const dbPath = getOmpDbPath();
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const dbPath = secureOmpDbPath();
   const db = new Database(dbPath, databaseOptions());
 
   db.prepare("DELETE FROM auth_credentials WHERE provider = ?").run(providerId);
@@ -70,8 +84,7 @@ export function saveOmpCredentials(providerId: string, apiKey: string, baseUrl: 
 export function deleteOmpCredentials(providerId: string) {
   const Database = getDatabaseClass();
   if (!Database) return;
-  const dbPath = getOmpDbPath();
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const dbPath = secureOmpDbPath();
   const db = new Database(dbPath, databaseOptions());
   db.prepare("DELETE FROM auth_credentials WHERE provider = ?").run(providerId);
   db.close();
