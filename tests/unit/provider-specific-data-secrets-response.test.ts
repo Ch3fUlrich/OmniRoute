@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { SignJWT } from "jose";
 import { makeManagementSessionRequest } from "../helpers/managementSession.ts";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-psd-secrets-response-"));
@@ -161,8 +162,13 @@ test("list and detail reveal require a signed admin session without machine cred
     for (const detail of [false, true]) {
       const url = `http://localhost/api/providers${detail ? `/${created.id}` : ""}`;
       const session = await makeManagementSessionRequest(url);
+      const expired = await new SignJWT({ authenticated: true })
+        .setProtectedHeader({ alg: "HS256" })
+        .setExpirationTime(Math.floor(Date.now() / 1000) - 3600)
+        .sign(new TextEncoder().encode(process.env.JWT_SECRET));
       for (const [headers, reveal] of [
         [session.headers, true],
+        [new Headers({ cookie: `auth_token=${expired}` }), false],
         [new Headers({ authorization: `Bearer ${secret}` }), false],
         [
           new Headers({

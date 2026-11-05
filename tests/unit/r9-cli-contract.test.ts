@@ -67,25 +67,25 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
         assert.equal(/expiration metadata unavailable/.test(warnings), expiration !== 200);
       }
     }
-    for (const [command, path, args] of [
-      ["get-api-providers", "/api/providers", []],
-      ["get-api-providers-client", "/api/providers/client", []],
-      ["get-api-providers-id-models", "/api/providers/id/models", ["--id", "id"]],
-      ["get-api-providers-id-", "/api/providers/id", ["--id", "id"]],
+    for (const [command, path, args, status] of [
+      ["get-api-providers", "/api/providers", [], 200],
+      ["get-api-providers-client", "/api/providers/client", [], 200],
+      ["get-api-providers-id-models", "/api/providers/id/models", ["--id", "id"], 200],
+      ["get-api-providers-id-", "/api/providers/id", ["--id", "id"], 403],
+      ["get-api-providers", "/api/providers", [], 403],
+      ["get-api-providers", "/api/providers", [], 500],
+      ["patch-api-providers-id-", "/api/providers/id", ["--id", "id", "--body", "{}"], 403],
     ] as const) {
       let called = false;
       globalThis.fetch = async (input, init) => {
         assert.equal(new URL(String(input)).pathname, path);
-        assert.equal(init?.method, "GET");
+        assert.equal(init?.method, command.startsWith("patch-") ? "PATCH" : "GET");
         assert.equal(
           new Headers(init?.headers).get("authorization") === "Bearer explicit-fixture",
           true
         );
         called = true;
-        return Response.json(
-          {},
-          { status: inferRequiredScope("GET", path) === "read" ? 200 : 403 }
-        );
+        return Response.json({}, { status });
       };
       const program = new Command()
         .option("--api-key <key>")
@@ -107,7 +107,7 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
         { from: "user" }
       );
       assert.equal(called, true);
-      assert.equal(process.exitCode, inferRequiredScope("GET", path) === "read" ? 0 : 1);
+      assert.equal(process.exitCode, status === 200 ? 0 : 1);
     }
     process.exitCode = 0;
     for (const args of [

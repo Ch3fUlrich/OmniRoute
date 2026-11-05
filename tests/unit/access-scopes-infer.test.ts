@@ -13,6 +13,26 @@ test("mutating methods default to write", () => {
   assert.equal(inferRequiredScope("PATCH", "/api/combo/x"), "write");
 });
 
+test("encoded and noncanonical sensitive paths fail closed after one decode", () => {
+  for (const path of [
+    "/api/keys/x/%72eveal",
+    "/api/keys/x/%2572eveal",
+    "/api/keys/x/%zz",
+    "/api/providers/%2563lient",
+    "/%2561pi/settings",
+    "/%61pi/settings/%zz",
+    "/api/oauth/%xx",
+    "/API/Settings",
+    "/API/PROVIDERS",
+  ]) {
+    for (const method of ["GET", "HEAD", "PUT", "PATCH"])
+      assert.equal(inferRequiredScope(method, path), "admin", `${method} ${path}`);
+  }
+  assert.equal(inferRequiredScope("PUT", "/%61pi/settings"), "admin");
+  assert.equal(inferRequiredScope("GET", "/%61pi/settings"), "read");
+  assert.equal(inferRequiredScope("GET", "/api/providers/%63lient"), "read");
+});
+
 test("admin-prefix routes require admin for ANY method", () => {
   assert.equal(inferRequiredScope("GET", "/api/cli/tokens"), "admin");
   assert.equal(inferRequiredScope("POST", "/api/cli/tokens"), "admin");

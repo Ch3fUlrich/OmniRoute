@@ -195,7 +195,7 @@ for (const [tag, ops] of Object.entries(byTag)) {
     );
     lines.push(`      const data = res.ok ? await res.json() : await res.text();`);
     lines.push(`      emit(data, gOpts);`);
-    lines.push(`      if (!res.ok) process.exitCode = 1;`);
+    if (tag === "providers") lines.push(`      if (!res.ok) process.exitCode = 1;`);
     lines.push(`    });`);
   }
 

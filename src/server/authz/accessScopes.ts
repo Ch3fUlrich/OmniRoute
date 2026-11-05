@@ -76,17 +76,25 @@ function matchesExactPath(path: string, paths: readonly string[]): boolean {
  */
 export function inferRequiredScope(method: string, path: string): AccessScope {
   const m = (method || "GET").toUpperCase();
-  const p = (path || "/").replace(/\/+/g, "/").replace(/\/+$/, "") || "/";
+  let decoded = path || "/";
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // A malformed escape may hide the sensitive prefix itself.
+    return "admin";
+  }
+  const p = decoded.replace(/\/+/g, "/").replace(/\/+$/, "") || "/";
   const lower = p.toLowerCase();
+  const sensitive = matchesPrefix(lower, [
+    ...ADMIN_SCOPE_PREFIXES,
+    ...ADMIN_MUTATION_PREFIXES,
+    ...ADMIN_MUTATION_EXACT_PATHS,
+  ]);
+  // Decode exactly once; residual or malformed escapes must fail closed.
+  if (p.includes("%")) return "admin";
   // Routing is case-sensitive. Noncanonical sensitive paths must fail closed,
   // not acquire a static sibling's read exception by lowercasing its name.
-  if (
-    p !== lower &&
-    (matchesPrefix(lower, ADMIN_SCOPE_PREFIXES) ||
-      matchesPrefix(lower, ADMIN_MUTATION_PREFIXES) ||
-      (matchesPrefix(lower, ["/api/keys"]) && lower.endsWith("/reveal")))
-  )
-    return "admin";
+  if (p !== lower && sensitive) return "admin";
 
   if (matchesPrefix(p, ADMIN_SCOPE_PREFIXES)) return "admin";
   // The dynamic connection detail route can reveal credentials. Static siblings
@@ -112,7 +120,7 @@ export function inferRequiredScope(method: string, path: string): AccessScope {
   if (
     READ_METHODS.has(m) &&
     providerDetail &&
-    (path.includes("//") || !providerStaticReads.includes(providerDetail[1]))
+    (decoded.includes("//") || !providerStaticReads.includes(providerDetail[1]))
   )
     return "admin";
   // Revealing a key hands back its plaintext secret — never a `read` operation.
