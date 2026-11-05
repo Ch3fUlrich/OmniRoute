@@ -27,11 +27,20 @@ function secureOmpDbPath() {
   const dbPath = getOmpDbPath();
   const dir = path.dirname(dbPath);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  fs.chmodSync(dir, 0o700);
+  // POSIX modes are best-effort; Windows chmod does not enforce owner-only ACLs.
+  try {
+    fs.chmodSync(dir, 0o700);
+  } catch {
+    console.warn("OMP directory permissions could not be tightened; continuing credential write.");
+  }
   // Create securely before SQLite opens it, and tighten existing CLI databases.
   const fd = fs.openSync(dbPath, "a", 0o600);
   try {
-    fs.fchmodSync(fd, 0o600);
+    try {
+      fs.fchmodSync(fd, 0o600);
+    } catch {
+      console.warn("OMP database permissions could not be tightened; continuing credential write.");
+    }
   } finally {
     fs.closeSync(fd);
   }

@@ -31,6 +31,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { isNativeBinaryCompatible } from "./native-binary-compat.mjs";
+import { ensureBetterSqliteBuildRelease } from "./ensureBetterSqliteBuildRelease.mjs";
 import { getBetterSqlitePrebuildTarget } from "./betterSqlitePrebuildTarget.mjs";
 import { hasStandaloneAppBundle, isTermux } from "./postinstallSupport.mjs";
 import { colocateLlmlinguaOptionals } from "./colocateOptionals.mjs";
@@ -357,28 +358,6 @@ async function ensureLlmlinguaOptionals() {
  * Non-fatal: on targets without a prebuild, binding.gyp compiles from source
  * during `npm ci` itself and this is a no-op.
  */
-function ensureBetterSqliteBuildRelease() {
-  const pkgDir = join(ROOT, "node_modules", "better-sqlite3");
-  const target = join(pkgDir, "build", "Release", "better_sqlite3.node");
-  if (!existsSync(pkgDir) || existsSync(target)) return;
-  const prebuild = join(pkgDir, "prebuilds", `${getBetterSqlitePrebuildTarget()}.node`);
-  if (!existsSync(prebuild)) return;
-  if (
-    !isNativeBinaryCompatible(prebuild, {
-      runtimePlatform: isTermux() ? "android" : process.platform,
-      skipDlopen: true,
-    })
-  )
-    return;
-  try {
-    mkdirSync(dirname(target), { recursive: true });
-    copyFileSync(prebuild, target);
-    console.log(`  ✅ better-sqlite3 native binary materialised in build/Release (host prebuild).`);
-  } catch (err) {
-    console.warn(`  ⚠️  Could not materialise better-sqlite3 build/Release: ${err.message}`);
-  }
-}
-
 /**
  * Preflight check for development installs (when standalone dist/ bundle is not present).
  * Warns or errors if critical native dependencies like better-sqlite3 were skipped by npm >= 11
@@ -430,7 +409,7 @@ async function ensureStandaloneRuntimePackages() {
 }
 
 await verifyDevNativeModules();
-ensureBetterSqliteBuildRelease();
+ensureBetterSqliteBuildRelease({ rootDir: ROOT });
 await fixBetterSqliteBinary();
 await fixWreqJsBinary();
 await fixPlaywrightAndroid({ rootDir: ROOT });

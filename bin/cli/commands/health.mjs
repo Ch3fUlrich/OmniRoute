@@ -74,7 +74,16 @@ export async function runHealthCommand(opts = {}) {
       console.log(t("health.requests", { count: health.activeConnections }));
     }
 
-    const breakerSummary = health.circuitBreakerSummary || health.circuitBreakers;
+    const breakerSummary =
+      health.circuitBreakerSummary ||
+      (Array.isArray(health.circuitBreakers)
+        ? health.circuitBreakers.reduce((counts, breaker) => {
+            const state = String(breaker.state || breaker.status).toLowerCase();
+            const key = state === "half_open" || state === "half-open" ? "halfOpen" : state;
+            counts[key] = (counts[key] || 0) + 1;
+            return counts;
+          }, {})
+        : health.circuitBreakers);
     if (breakerSummary && opts.verbose) {
       console.log("\n  \x1b[1mCircuit Breakers\x1b[0m");
       const { open = 0, halfOpen = 0, closed = 0 } = breakerSummary;
@@ -108,11 +117,31 @@ export async function runHealthComponentsCommand(opts = {}) {
       return 1;
     }
     const health = await res.json();
+    const summary =
+      health.circuitBreakerSummary ||
+      (!Array.isArray(health.circuitBreakers) ? health.circuitBreakers : null);
+    if (summary && !health.components) {
+      console.log("  Circuit breaker aggregate counts (not individual components):");
+      for (const [name, count] of Object.entries(summary)) {
+        if (name === "total") continue;
+        if (opts.alertsOnly && (name === "closed" || count === 0)) continue;
+        console.log(`    ${name.padEnd(24)} ${count}`);
+      }
+      return 0;
+    }
     const components =
-      health.components || health.circuitBreakerSummary || health.circuitBreakers || {};
+      health.components ||
+      Object.fromEntries(
+        (health.circuitBreakers || []).map((breaker, index) => [
+          breaker.provider || String(index),
+          breaker,
+        ])
+      );
     for (const [name, info] of Object.entries(components)) {
       const status =
-        typeof info === "object" ? info.state || info.status || "unknown" : String(info);
+        info && typeof info === "object"
+          ? String(info.state || info.status || "unknown").toLowerCase()
+          : String(info);
       const isAlert = status !== "closed" && status !== "ok" && status !== "healthy";
       if (opts.alertsOnly && !isAlert) continue;
       const icon = isAlert ? "\x1b[33m⚠\x1b[0m" : "\x1b[32m✓\x1b[0m";

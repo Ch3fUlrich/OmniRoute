@@ -18,7 +18,7 @@
  * path (omp CLI never run yet), which each exported function must handle
  * gracefully without throwing.
  */
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -120,6 +120,27 @@ describe("db/omp.ts — saveOmpCredentials + getOmpCredentials round trip", { sk
       }
       assert.equal(fs.statSync(path.dirname(getOmpDbPath())).mode & 0o777, 0o700);
       assert.equal(fs.statSync(getOmpDbPath()).mode & 0o777, 0o600);
+    });
+  }
+  for (const syscall of ["chmodSync", "fchmodSync"] as const) {
+    it(`continues credential save and delete when ${syscall} fails with EPERM`, () => {
+      seedOmpDb();
+      const warnings: string[] = [];
+      const warning = mock.method(console, "warn", (message: string) => warnings.push(message));
+      const permission = mock.method(fs, syscall, () => {
+        throw Object.assign(new Error("permission denied"), { code: "EPERM" });
+      });
+      try {
+        saveOmpCredentials(PROVIDER_ID, "fixture-key", "http://localhost:20128/v1");
+        assert.equal(getOmpCredentials(PROVIDER_ID).hasOmniRoute, true);
+        deleteOmpCredentials(PROVIDER_ID);
+        assert.equal(getOmpCredentials(PROVIDER_ID).hasOmniRoute, false);
+        assert.equal(warnings.length, 2);
+        assert.ok(warnings.every((message) => !message.includes("fixture-key")));
+      } finally {
+        permission.mock.restore();
+        warning.mock.restore();
+      }
     });
   }
   it("persists apiKey/baseUrl so a subsequent read sees them", () => {

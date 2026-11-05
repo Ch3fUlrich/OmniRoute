@@ -14,6 +14,7 @@ import { runHealthCommand, runHealthComponentsCommand } from "../../bin/cli/comm
 
 let server: http.Server;
 let baseUrl: string;
+let arrayOnly = false;
 
 test.before(async () => {
   server = http.createServer((req, res) => {
@@ -26,7 +27,9 @@ test.before(async () => {
           uptime: 123,
           activeConnections: 0,
           circuitBreakers: [{ provider: "fixture", state: "OPEN", retryAfterMs: 1000 }],
-          circuitBreakerSummary: { open: 1, halfOpen: 0, degraded: 0, closed: 3, total: 4 },
+          circuitBreakerSummary: arrayOnly
+            ? undefined
+            : { open: 1, halfOpen: 0, degraded: 0, closed: 3, total: 4 },
           memoryUsage: { rss: 1000, heapUsed: 500 },
         })
       );
@@ -58,8 +61,19 @@ test("health views use aggregate counts rather than treating the breaker array a
     assert.equal(await runHealthComponentsCommand({}), 0);
     assert.ok(lines.some((line) => /closed.*3/.test(line)));
     assert.ok(!lines.some((line) => line.includes("unknown")));
+    assert.ok(lines.some((line) => line.includes("aggregate counts")));
+    assert.ok(!lines.some((line) => line.includes("total")));
+    arrayOnly = true;
+    lines.length = 0;
+    assert.equal(await runHealthCommand({ verbose: true }), 0);
+    assert.ok(lines.some((line) => /open.*1/.test(line)));
+    lines.length = 0;
+    assert.equal(await runHealthComponentsCommand({}), 0);
+    assert.ok(lines.some((line) => /fixture.*open/.test(line)));
+    assert.ok(!lines.some((line) => line.includes("unknown")));
   } finally {
     console.log = originalLog;
+    arrayOnly = false;
   }
 });
 
@@ -83,6 +97,7 @@ test("GH #6677: omniroute health should succeed against a server that only imple
   } finally {
     console.error = originalError;
     console.log = originalLog;
+    arrayOnly = false;
   }
 
   assert.equal(
