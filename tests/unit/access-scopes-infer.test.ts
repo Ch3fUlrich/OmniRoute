@@ -31,6 +31,8 @@ test("encoded and noncanonical sensitive paths fail closed after one decode", ()
   assert.equal(inferRequiredScope("PUT", "/%61pi/settings"), "admin");
   assert.equal(inferRequiredScope("GET", "/%61pi/settings"), "read");
   assert.equal(inferRequiredScope("GET", "/api/providers/%63lient"), "read");
+  for (const path of ["/api/providers/a%2Fb", "/api/providers/a%2fb", "/api/providers/a%5Cb"])
+    assert.equal(inferRequiredScope("GET", path), "admin", path);
 });
 
 test("admin-prefix routes require admin for ANY method", () => {

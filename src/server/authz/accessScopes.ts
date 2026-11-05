@@ -77,6 +77,8 @@ function matchesExactPath(path: string, paths: readonly string[]): boolean {
 export function inferRequiredScope(method: string, path: string): AccessScope {
   const m = (method || "GET").toUpperCase();
   let decoded = path || "/";
+  // An encoded separator changes the segment structure once decoded: fail closed.
+  if (/%(2f|5c)/i.test(decoded)) return "admin";
   try {
     decoded = decodeURIComponent(decoded);
   } catch {

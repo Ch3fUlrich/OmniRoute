@@ -113,6 +113,7 @@ export const LOCAL_ONLY_API_PREFIXES: ReadonlyArray<string> = [
  * SAME string Next.js's own file-based router uses to resolve the `[id]`
  * dynamic segment, so there is no decode/normalization mismatch between what
  * this regex sees and what actually gets dispatched to the route handler.
+ * `inferRequiredScope` decodes separately, for scope only, and fails closed.
  *
  *   - `POST /api/providers/{id}/login` launches a headful Playwright Chromium
  *     (a child process) to drive a web-cookie login. Loopback enforcement must
