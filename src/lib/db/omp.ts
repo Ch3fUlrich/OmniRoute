@@ -1,3 +1,4 @@
+import fs from "fs";
 import os from "os";
 import path from "path";
 import { runtimeRequire as _require } from "./adapters/runtimeRequire";
@@ -49,6 +50,7 @@ export function saveOmpCredentials(providerId: string, apiKey: string, baseUrl: 
   const Database = getDatabaseClass();
   if (!Database) return;
   const dbPath = getOmpDbPath();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath, databaseOptions());
 
   db.prepare("DELETE FROM auth_credentials WHERE provider = ?").run(providerId);
@@ -69,6 +71,7 @@ export function deleteOmpCredentials(providerId: string) {
   const Database = getDatabaseClass();
   if (!Database) return;
   const dbPath = getOmpDbPath();
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath, databaseOptions());
   db.prepare("DELETE FROM auth_credentials WHERE provider = ?").run(providerId);
   db.close();
