@@ -60,7 +60,7 @@ export function registerResilience(program) {
     .action(async (opts, cmd) => {
       const params = new URLSearchParams();
       if (opts.provider) params.set("provider", opts.provider);
-      const res = await apiFetch(`/api/resilience?${params}`);
+      const res = await apiFetch(`/api/resilience?${params}`, cmd.optsWithGlobals());
       if (!res.ok) {
         process.stderr.write(`Error: ${res.status}\n`);
         process.exit(1);
@@ -71,7 +71,7 @@ export function registerResilience(program) {
   r.command("breakers")
     .option("--provider <p>", t("resilience.breakers.provider"))
     .action(async (opts, cmd) => {
-      const res = await apiFetch("/api/resilience?include=breakers");
+      const res = await apiFetch("/api/resilience?include=breakers", cmd.optsWithGlobals());
       if (!res.ok) {
         process.stderr.write(`Error: ${res.status}\n`);
         process.exit(1);
@@ -86,7 +86,7 @@ export function registerResilience(program) {
     .option("--provider <p>", t("resilience.cooldowns.provider"))
     .option("--connection-id <id>", t("resilience.cooldowns.connectionId"))
     .action(async (opts, cmd) => {
-      const res = await apiFetch("/api/resilience?include=cooldowns");
+      const res = await apiFetch("/api/resilience?include=cooldowns", cmd.optsWithGlobals());
       if (!res.ok) {
         process.stderr.write(`Error: ${res.status}\n`);
         process.exit(1);
@@ -137,7 +137,11 @@ export function registerResilience(program) {
         model: opts.model,
         allCooldowns: !!opts.allCooldowns,
       };
-      const res = await apiFetch("/api/resilience/reset", { method: "POST", body });
+      const res = await apiFetch("/api/resilience/reset", {
+        ...cmd.optsWithGlobals(),
+        method: "POST",
+        body,
+      });
       if (!res.ok) {
         process.stderr.write(`Error: ${res.status}\n`);
         process.exit(1);
@@ -148,7 +152,7 @@ export function registerResilience(program) {
   const profile = r.command("profile").description(t("resilience.profile.description"));
 
   profile.command("show").action(async (opts, cmd) => {
-    const res = await apiFetch("/api/resilience?include=profile");
+    const res = await apiFetch("/api/resilience?include=profile", cmd.optsWithGlobals());
     if (!res.ok) {
       process.stderr.write(`Error: ${res.status}\n`);
       process.exit(1);
@@ -174,7 +178,7 @@ export function registerResilience(program) {
   const config = r.command("config").description(t("resilience.config.description"));
 
   config.command("show").action(async (opts, cmd) => {
-    const res = await apiFetch("/api/resilience?include=config");
+    const res = await apiFetch("/api/resilience?include=config", cmd.optsWithGlobals());
     if (!res.ok) {
       process.stderr.write(`Error: ${res.status}\n`);
       process.exit(1);
@@ -192,7 +196,11 @@ export function registerResilience(program) {
       if (opts.threshold != null) body.threshold = opts.threshold;
       if (opts.resetTimeout != null) body.resetTimeoutMs = opts.resetTimeout;
       if (opts.baseCooldown != null) body.baseCooldownMs = opts.baseCooldown;
-      const res = await apiFetch("/api/resilience", { method: "PATCH", body });
+      const res = await apiFetch("/api/resilience", {
+        ...cmd.optsWithGlobals(),
+        method: "PATCH",
+        body,
+      });
       if (!res.ok) {
         process.stderr.write(`Error: ${res.status}\n`);
         process.exit(1);

@@ -62,7 +62,10 @@ test("status route read exceptions reject sub-routes, trailing slashes and mixed
     for (const method of ["GET", "HEAD", "OPTIONS"]) {
       assert.equal(inferRequiredScope(method, route), "read");
       assert.equal(inferRequiredScope(method, route + "/"), "read");
-      assert.equal(inferRequiredScope(method, route.toUpperCase()), "read");
+      assert.equal(
+        inferRequiredScope(method, route.toUpperCase()),
+        route === "/api/providers" ? "admin" : "read"
+      );
     }
     for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       assert.notEqual(inferRequiredScope(method, route), "read");

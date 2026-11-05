@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute ကို အခြားတစ်နေရာတွင် (VPS၊ အိမ်သုံးဆာဗာ သို့မဟုတ် သင့် Tailnet ပေါ်ရှိ အခြားစက်တစ်လုံးတွင်) အသုံးပြုနေစဉ် သင့်လက်ပ်တော့ပေါ်၌ `omniroute` CLI ကို အသုံးပြုနိုင်သည်။
 `omniroute connect` ဖြင့် တစ်ကြိမ် အကောင့်ဝင်ပြီးနောက် **CLI command အားလုံး** သည် ထိုအဝေးထိန်းဆာဗာကို ဦးတည်မည်ဖြစ်သည် — command များနှင့် output များသည် အတူတူပင်ဖြစ်ပြီး အဝေးထိန်းဆာဗာပေါ်တွင်သာ လုပ်ဆောင်ပါသည်။
 

@@ -11,6 +11,7 @@ import {
   runProviderRemoveCommand,
 } from "../../bin/cli/commands/provider-crud.mjs";
 import { inferRequiredScope } from "../../src/server/authz/accessScopes.ts";
+import { registerResilience } from "../../bin/cli/commands/resilience.mjs";
 
 test("r9 CLI read and read-back contracts are isolated from operator credentials", async () => {
   const saved = { ...process.env };
@@ -23,7 +24,18 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
     OMNIROUTE_BASE_URL: "https://fixture.invalid",
     OMNIROUTE_API_KEY: "fixture-read",
   });
-  const original = { fetch: globalThis.fetch, log: console.log, error: console.error };
+  const original = {
+    fetch: globalThis.fetch,
+    log: console.log,
+    error: console.error,
+    write: process.stderr.write,
+    exitCode: process.exitCode,
+  };
+  let warnings = "";
+  process.stderr.write = ((chunk: string) => {
+    warnings += chunk;
+    return true;
+  }) as typeof process.stderr.write;
   const lines: string[] = [];
   console.log = console.error = (...args: unknown[]) => {
     lines.push(args.join(" "));
@@ -31,6 +43,7 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
   try {
     for (const expiration of [200, 401, 403, 404, 405, 501, 500, "network", "malformed"] as const) {
       lines.length = 0;
+      warnings = "";
       globalThis.fetch = async (input) => {
         const path = new URL(String(input)).pathname;
         if (path === "/api/providers/expiration") {
@@ -48,7 +61,11 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
       );
       if ([401, 403].includes(Number(expiration)))
         assert.match(lines.join(" "), /needs admin scope/);
-      else assert.match(lines.join(" "), /inventory/);
+      else {
+        assert.match(lines.join(" "), /inventory/);
+        assert.ok(JSON.parse(lines.join("\n")));
+        assert.equal(/expiration metadata unavailable/.test(warnings), expiration !== 200);
+      }
     }
     for (const [command, path, args] of [
       ["get-api-providers", "/api/providers", []],
@@ -75,6 +92,7 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
         .option("--base-url <url>")
         .option("--json");
       register_providers(program);
+      process.exitCode = 0;
       await program.parseAsync(
         [
           "--api-key",
@@ -84,6 +102,47 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
           "--json",
           "providers",
           command,
+          ...args,
+        ],
+        { from: "user" }
+      );
+      assert.equal(called, true);
+      assert.equal(process.exitCode, inferRequiredScope("GET", path) === "read" ? 0 : 1);
+    }
+    process.exitCode = 0;
+    for (const args of [
+      ["status"],
+      ["breakers"],
+      ["cooldowns"],
+      ["lockouts"],
+      ["reset", "--provider", "fixture", "--yes"],
+      ["profile", "show"],
+      ["config", "show"],
+      ["config", "set", "--threshold", "3"],
+    ]) {
+      let called = false;
+      globalThis.fetch = async (input, init) => {
+        assert.equal(new URL(String(input)).origin, "https://explicit.invalid");
+        assert.equal(
+          new Headers(init?.headers).get("authorization") === "Bearer explicit-fixture",
+          true
+        );
+        called = true;
+        return Response.json({ items: [] });
+      };
+      const program = new Command()
+        .option("--api-key <key>")
+        .option("--base-url <url>")
+        .option("--json");
+      registerResilience(program);
+      await program.parseAsync(
+        [
+          "--api-key",
+          "explicit-fixture",
+          "--base-url",
+          "https://explicit.invalid",
+          "--json",
+          "resilience",
           ...args,
         ],
         { from: "user" }
@@ -115,6 +174,8 @@ test("r9 CLI read and read-back contracts are isolated from operator credentials
     globalThis.fetch = original.fetch;
     console.log = original.log;
     console.error = original.error;
+    process.stderr.write = original.write;
+    process.exitCode = original.exitCode;
     for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
     Object.assign(process.env, saved);
     rmSync(home, { recursive: true, force: true });
@@ -127,8 +188,15 @@ test("provider detail variants never widen read; static siblings remain readable
     "/api/providers/id//",
     "/API/PROVIDERS/ID",
     "/api/providers/status",
+    "/API/CLI/TOKENS",
+    "//api/keys/x/reveal",
+    "/api/providers/CLIENT",
+    "/api/providers/Client",
+    "/api/providers/EXPIRATION",
+    "/api/providers//client",
   ]) {
-    for (const method of ["GET", "HEAD"]) assert.equal(inferRequiredScope(method, path), "admin");
+    for (const method of ["GET", "HEAD", "PATCH", "PUT"])
+      assert.equal(inferRequiredScope(method, path), "admin");
   }
   for (const name of [
     "client",

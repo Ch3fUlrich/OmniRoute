@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute에는 관리 경로를 승인할 수 있는 **네 가지 자격 증명 계열**이 있습니다.
 이들은 서로 바꿔 사용할 수 없습니다. 추론 API 키(`sk-…`)는 명시적으로 `manage` 또는
 `admin` 범위를 부여받지 않은 한 서버를 관리할 수 **없습니다**.

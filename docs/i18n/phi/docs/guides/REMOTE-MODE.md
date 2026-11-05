@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 Patakbuhin ang `omniroute` CLI sa iyong laptop habang tumatakbo naman ang OmniRoute sa ibang lugar
 (isang VPS, home server, o ibang machine sa iyong Tailnet). Mag-log in nang isang beses gamit ang
 `omniroute connect`, at mula noon, **bawat** CLI command ay nakatuon sa remote

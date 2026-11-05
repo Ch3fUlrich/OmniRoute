@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute వేరే చోట నడుస్తున్నప్పుడు (ఒక VPS, హోమ్ సర్వర్, మీ Tailnetలోని మరో మెషీన్), మీ ల్యాప్టాప్లో `omniroute` CLIని అమలు చేయండి. మీరు `omniroute connect`తో ఒకసారి లాగిన్ అయిన తర్వాత, అప్పటి నుంచి **ప్రతి** CLI కమాండ్ ఆ రిమోట్ సర్వర్నే లక్ష్యంగా చేసుకుంటుంది — అవే కమాండ్లు, అదే అవుట్పుట్, కేవలం రిమోట్లో అమలవుతాయి.
 
 ఇన్స్టాల్ చేయడానికి రెండో సాధనం ఏదీ లేదు: రిమోట్ మోడ్ అంటే సాధారణ `omniroute` CLIతో పాటు స్కోప్ చేసిన **యాక్సెస్ టోకెన్లు**.

@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute ஆனது **நான்கு நற்சான்றிதழ் குடும்பங்களைக்** கொண்டுள்ளது, அவை மேலாண்மை வழிகளை அங்கீகரிக்க முடியும்.
 அவை ஒன்றோடொன்று மாற்றிக்கொள்ள முடியாதவை. Inference API விசைகள் (`sk-…`) சேவையகத்தை நிர்வகிக்காது, அவற்றுக்கு வெளிப்படையாக `manage` அல்லது `admin` ஸ்கோப் வழங்கப்பட்டாலொழிய.
 

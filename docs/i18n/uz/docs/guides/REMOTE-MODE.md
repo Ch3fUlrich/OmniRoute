@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute’ning oʻzi boshqa joyda (VPS, uy serveri yoki Tailnet’ingizdagi boshqa qurilmada) ishlayotgan paytda `omniroute` CLI’ni noutbukingizda ishga tushiring. Siz `omniroute connect` yordamida bir marta tizimga kirasiz va shundan keyin **har bir** CLI buyrugʻi oʻsha masofaviy serverga yoʻnaltiriladi — buyruqlar ham, chiqish natijalari ham bir xil, faqat masofaviy serverda bajariladi.
 
 Oʻrnatish uchun ikkinchi vosita yoʻq: masofaviy rejim — bu odatiy `omniroute` CLI va qamrovi belgilangan **kirish tokenlari**.

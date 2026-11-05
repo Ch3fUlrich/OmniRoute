@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 شغّل واجهة سطر الأوامر `omniroute` على حاسوبك المحمول بينما يعمل OmniRoute نفسه في مكان آخر
 (خادم VPS، أو خادم منزلي، أو جهاز آخر على شبكة Tailnet الخاصة بك). تسجّل الدخول مرة واحدة باستخدام
 `omniroute connect`، ومنذ ذلك الحين يستهدف **كل** أمر في واجهة سطر الأوامر ذلك الخادم البعيد

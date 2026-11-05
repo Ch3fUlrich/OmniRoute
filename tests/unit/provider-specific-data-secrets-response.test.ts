@@ -151,6 +151,69 @@ test("provider list reveal is dashboard-session-only, never access-token scope",
   }
 });
 
+test("list and detail reveal require a signed admin session without machine credentials", async () => {
+  const { createAccessToken } = await import("../../src/lib/db/accessTokens.ts");
+  const { updateSettings } = await import("../../src/lib/db/settings.ts");
+  const created = await createKeyedConnection();
+  const { secret } = createAccessToken({ name: "detail-reveal", scope: "admin" });
+  process.env.ALLOW_API_KEY_REVEAL = "true";
+  try {
+    for (const detail of [false, true]) {
+      const url = `http://localhost/api/providers${detail ? `/${created.id}` : ""}`;
+      const session = await makeManagementSessionRequest(url);
+      for (const [headers, reveal] of [
+        [session.headers, true],
+        [new Headers({ authorization: `Bearer ${secret}` }), false],
+        [
+          new Headers({
+            ...Object.fromEntries(session.headers),
+            authorization: `Bearer ${secret}`,
+          }),
+          false,
+        ],
+        [
+          new Headers({
+            ...Object.fromEntries(session.headers),
+            authorization: "Bearer ordinary-key",
+          }),
+          false,
+        ],
+        [
+          new Headers({ ...Object.fromEntries(session.headers), "x-api-key": "machine-key" }),
+          false,
+        ],
+        [new Headers({ cookie: "auth_token=forged" }), false],
+        [
+          new Headers({ cookie: "auth_token=eyJhbGciOiJub25lIn0.eyJhdXRoZW50aWNhdGVkIjp0cnVlfQ." }),
+          false,
+        ],
+        [new Headers(), false],
+      ] as const) {
+        // Even with login disabled, anonymous/forged cookies must not reveal.
+        await updateSettings({ requireLogin: false });
+        const request = new Request(url, { headers });
+        const response = detail
+          ? await byIdRoute.GET(request, { params: Promise.resolve({ id: created.id }) })
+          : await listRoute.GET(request);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        const connection = detail
+          ? body.connection
+          : body.connections.find((c: { id: string }) => c.id === created.id);
+        assert.equal(connection.apiKey === created.apiKey, reveal, "primary reveal policy");
+        assert.equal(
+          JSON.stringify(psdOf(connection).extraApiKeys) === JSON.stringify([EXTRA_ONE, EXTRA_TWO]),
+          reveal,
+          "nested reveal policy"
+        );
+      }
+    }
+  } finally {
+    await updateSettings({ requireLogin: true });
+    delete process.env.ALLOW_API_KEY_REVEAL;
+  }
+});
+
 test("GET /api/providers/[id] masks extraApiKeys the same way", async () => {
   const created = await createKeyedConnection();
   const detail = await getDetail(created.id);

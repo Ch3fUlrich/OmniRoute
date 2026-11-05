@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute ራሱ በሌላ ቦታ (በVPS፣ በቤት ሰርቨር፣ በTailnetዎ ላይ ባለ ሌላ ማሽን) ላይ እየሰራ፣ `omniroute` CLIን በላፕቶፕዎ ላይ ያስኪዱ።
 በ`omniroute connect` አንድ ጊዜ ይግቡ፤ ከዚያ በኋላ **እያንዳንዱ** የCLI ትዕዛዝ ያንን የርቀት
 ሰርቨር ይጠቀማል — ተመሳሳይ ትዕዛዞች፣ ተመሳሳይ ውጤት፣ በርቀት ሰርቨሩ ላይ መፈጸማቸው ብቻ ይለያል።

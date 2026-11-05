@@ -67,9 +67,7 @@ function matchesPrefix(path: string, prefixes: readonly string[]): boolean {
 }
 
 function matchesExactPath(path: string, paths: readonly string[]): boolean {
-  // A single trailing slash is the same route; anything deeper is a different route.
-  const normalized = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
-  return paths.includes(normalized);
+  return paths.includes(path);
 }
 
 /**
@@ -78,13 +76,22 @@ function matchesExactPath(path: string, paths: readonly string[]): boolean {
  */
 export function inferRequiredScope(method: string, path: string): AccessScope {
   const m = (method || "GET").toUpperCase();
-  const p = path || "/";
+  const p = (path || "/").replace(/\/+/g, "/").replace(/\/+$/, "") || "/";
+  const lower = p.toLowerCase();
+  // Routing is case-sensitive. Noncanonical sensitive paths must fail closed,
+  // not acquire a static sibling's read exception by lowercasing its name.
+  if (
+    p !== lower &&
+    (matchesPrefix(lower, ADMIN_SCOPE_PREFIXES) ||
+      matchesPrefix(lower, ADMIN_MUTATION_PREFIXES) ||
+      (matchesPrefix(lower, ["/api/keys"]) && lower.endsWith("/reveal")))
+  )
+    return "admin";
 
   if (matchesPrefix(p, ADMIN_SCOPE_PREFIXES)) return "admin";
   // The dynamic connection detail route can reveal credentials. Static siblings
   // and deeper routes keep the base method policy; never widen a whole prefix.
-  const providerReadPath = p.replace(/\/+/g, "/").replace(/\/+$/, "").toLowerCase();
-  const providerDetail = /^\/api\/providers\/([^/]+)$/.exec(providerReadPath);
+  const providerDetail = /^\/api\/providers\/([^/]+)$/.exec(p);
   const providerStaticReads = [
     "client",
     "expiration",
@@ -102,7 +109,11 @@ export function inferRequiredScope(method: string, path: string): AccessScope {
     "web-session-contract",
     "test-batch",
   ];
-  if (READ_METHODS.has(m) && providerDetail && !providerStaticReads.includes(providerDetail[1]))
+  if (
+    READ_METHODS.has(m) &&
+    providerDetail &&
+    (path.includes("//") || !providerStaticReads.includes(providerDetail[1]))
+  )
     return "admin";
   // Revealing a key hands back its plaintext secret — never a `read` operation.
   if (matchesPrefix(p, ["/api/keys"]) && /\/reveal\/?$/.test(p)) return "admin";

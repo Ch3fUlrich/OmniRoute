@@ -31,7 +31,7 @@ Related: [Remote Mode](./REMOTE-MODE.md) (how `oma_live_…` is minted for a rem
 
 ---
 
-Safe-method reads (GET/HEAD/OPTIONS) keep the base method policy, including providers list, client, models and expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota (connection resetAt). Sensitive admin surfaces and key reveal remain admin; provider connection-by-id reads require admin because they may reveal credentials. Mutations retain write/admin requirements; no prefix-wide status exceptions.
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 
 ## Scope matrices
 

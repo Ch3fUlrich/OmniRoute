@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 ઓમ્નીરૂટ પાસે **ચાર ક્રેડેન્શિયલ ફેમિલીઝ** છે જે મેનેજમેન્ટ રૂટ્સને અધિકૃત કરી શકે છે.
 તેઓ એકબીજા સાથે બદલી શકાતા નથી. ઇન્ફરન્સ API કીઝ (`sk-…`) સર્વરને મેનેજ કરતી **નથી**
 જ્યાં સુધી તેમને સ્પષ્ટપણે `manage` અથવા `admin` સ્કોપ આપવામાં ન આવે.

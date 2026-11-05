@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute 자체는 다른 곳(VPS, 홈 서버, Tailnet의 다른 머신)에서 실행하면서 노트북에서는 `omniroute` CLI를 실행할 수 있습니다.
 `omniroute connect`로 한 번 로그인하면 그 이후부터는 **모든** CLI 명령이 해당 원격
 서버를 대상으로 실행됩니다. 명령과 출력은 동일하며, 실행 대상만 원격 서버입니다.

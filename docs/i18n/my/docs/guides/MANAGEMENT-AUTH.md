@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute တွင် စီမံခန့်ခွဲမှု လမ်းကြောင်းများကို ခွင့်ပြုနိုင်သော **အထောက်အထား အမျိုးအစား လေးမျိုး** ရှိပါသည်။
 ၎င်းတို့သည် အချင်းချင်း အစားထိုး၍မရပါ။ Inference API keys (`sk-…`) များသည် `manage` သို့မဟုတ် `admin` scope ကို ရှင်းလင်းစွာ ခွင့်ပြုမထားပါက ဆာဗာကို စီမံခန့်ခွဲခြင်း **မပြုပါ**။
 

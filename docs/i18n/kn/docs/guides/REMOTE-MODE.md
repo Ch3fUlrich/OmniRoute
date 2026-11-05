@@ -4,6 +4,7 @@
 
 ---
 
+Safe-method status reads (GET/HEAD/OPTIONS) remain read: provider list/client/models/expiration, resilience/model-cooldowns, monitoring health, and /api/usage/quota. Provider detail reads and sensitive surfaces/key reveal require admin; mutations retain write/admin requirements. Provider list/detail always mask apiKey and secret extras for tokens (including admin), even with a session cookie. Only a verified HS256 dashboard admin session with ALLOW_API_KEY_REVEAL enabled may reveal; anonymous/login-disabled access never reveals. CLI providers status warns on unavailable expiration metadata, but 401/403 fails non-zero; generated provider commands also fail non-zero on HTTP errors.
 OmniRoute ಸ್ವತಃ ಬೇರೆಡೆ (VPS, ಹೋಮ್ ಸರ್ವರ್, ನಿಮ್ಮ Tailnetನಲ್ಲಿರುವ ಮತ್ತೊಂದು ಯಂತ್ರ) ಚಾಲನೆಯಲ್ಲಿರುವಾಗ, ನಿಮ್ಮ ಲ್ಯಾಪ್ಟಾಪ್ನಲ್ಲಿ `omniroute` CLI ಅನ್ನು ಚಲಾಯಿಸಿ. ನೀವು
 `omniroute connect` ಮೂಲಕ ಒಮ್ಮೆ ಲಾಗಿನ್ ಆದ ನಂತರ, ಅಲ್ಲಿಂದ ಮುಂದಕ್ಕೆ **ಪ್ರತಿಯೊಂದು** CLI ಕಮಾಂಡ್ ಆ ರಿಮೋಟ್
 ಸರ್ವರ್ ಅನ್ನು ಗುರಿಯಾಗಿಸುತ್ತದೆ — ಅದೇ ಕಮಾಂಡ್ಗಳು, ಅದೇ ಔಟ್ಪುಟ್, ಆದರೆ ರಿಮೋಟ್ನಲ್ಲಿ ಕಾರ್ಯಗತಗೊಳ್ಳುತ್ತವೆ.

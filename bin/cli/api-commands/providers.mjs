@@ -18,6 +18,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers")
@@ -40,6 +41,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("get-api-providers-id-")
@@ -56,6 +58,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("patch-api-providers-id-")
@@ -80,6 +83,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("delete-api-providers-id-")
@@ -96,6 +100,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-id-test")
@@ -112,6 +117,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("get-api-providers-id-models")
@@ -128,6 +134,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-test-batch")
@@ -142,6 +149,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-validate")
@@ -156,6 +164,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("get-api-providers-client")
@@ -170,6 +179,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-agy-auth-import")
@@ -184,6 +194,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-agy-auth-import-bulk")
@@ -198,6 +209,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-agy-auth-zip-extract")
@@ -212,6 +224,7 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
   tag
     .command("post-api-providers-agy-auth-apply-local")
@@ -226,5 +239,6 @@ export function register_providers(parent) {
       });
       const data = res.ok ? await res.json() : await res.text();
       emit(data, gOpts);
+      if (!res.ok) process.exitCode = 1;
     });
 }
