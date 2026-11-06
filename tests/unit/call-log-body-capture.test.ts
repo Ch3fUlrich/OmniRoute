@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { useDecollidedMigrationsDir } from "./helpers/decollidedMigrationsDir.ts";
 
 useDecollidedMigrationsDir();
-const dataDir = fs.mkdtempSync("/tmp/opencode/call-log-body-capture-");
+const originalDataDir = process.env.DATA_DIR;
+const originalRetention = process.env.CALL_LOG_RETENTION_DAYS;
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "call-log-body-capture-"));
 process.env.DATA_DIR = dataDir;
 process.env.CALL_LOG_RETENTION_DAYS = "3650";
 const originalGate = process.env.CALL_LOG_CAPTURE_BODIES;
@@ -15,6 +18,10 @@ const { saveCallLog, getCallLogs, getCallLogById } =
 
 test.after(() => {
   core.resetDbInstance();
+  if (originalDataDir === undefined) delete process.env.DATA_DIR;
+  else process.env.DATA_DIR = originalDataDir;
+  if (originalRetention === undefined) delete process.env.CALL_LOG_RETENTION_DAYS;
+  else process.env.CALL_LOG_RETENTION_DAYS = originalRetention;
   if (originalGate === undefined) delete process.env.CALL_LOG_CAPTURE_BODIES;
   else process.env.CALL_LOG_CAPTURE_BODIES = originalGate;
   fs.rmSync(dataDir, { recursive: true, force: true });
@@ -59,7 +66,7 @@ test("gate off preserves metadata and the plangraph witness contract without art
     has_content: 1,
   }))
     assert.equal(row[key], value, key);
-  assert.ok(row.usage_provenance);
+  assert.equal(row.usage_provenance, "reported");
   assert.equal(fs.existsSync(path.join(dataDir, "call_logs")), false);
 
   // GET /api/usage/call-logs uses getCallLogs. plangraph's
@@ -80,14 +87,14 @@ test("gate off retains error classification without writing an error-only artifa
     .prepare("SELECT * FROM call_logs WHERE id = ?")
     .get("error-only") as Record<string, unknown>;
   assert.equal(row.error_summary, "upstream timeout");
-  assert.ok(row.error_type);
+  assert.equal(row.error_type, "server_error");
   assert.equal(row.detail_state, "none");
   assert.equal(row.artifact_relpath, null);
   assert.equal(fs.existsSync(path.join(dataDir, "call_logs")), false);
 });
 
-test("unset and true write artifacts, and switching off leaves existing details readable", async () => {
-  for (const gate of [undefined, "true"]) {
+test("unset, empty and true write artifacts, and switching off leaves existing details readable", async () => {
+  for (const gate of [undefined, "", "true"]) {
     if (gate === undefined) delete process.env.CALL_LOG_CAPTURE_BODIES;
     else process.env.CALL_LOG_CAPTURE_BODIES = gate;
     const id = `enabled-${gate}`;
@@ -98,7 +105,72 @@ test("unset and true write artifacts, and switching off leaves existing details 
     assert.ok(fs.existsSync(artifact));
     const bytes = fs.readFileSync(artifact);
     process.env.CALL_LOG_CAPTURE_BODIES = "false";
-    assert.deepEqual((await getCallLogById(id))?.responseBody, entry.responseBody);
+    const existing = await getCallLogById(id);
+    assert.deepEqual(existing?.responseBody, entry.responseBody);
+    assert.deepEqual(existing?.requestBody, entry.requestBody);
+    assert.deepEqual(existing?.pipelinePayloads, entry.pipelinePayloads);
     assert.deepEqual(fs.readFileSync(artifact), bytes);
+  }
+});
+
+test("disabled values exclude embedded error bodies from every column and file", async () => {
+  const marker = "BODY_CAPTURE_ERROR_MARKER";
+  for (const gate of ["false", "0", "off"]) {
+    process.env.CALL_LOG_CAPTURE_BODIES = gate;
+    const id = `embedded-error-${gate}`;
+    await saveCallLog({
+      ...entry,
+      id,
+      status: 502,
+      error: `upstream response: {"body":"${marker}"}`,
+    });
+    const db = core.getDbInstance();
+    const row = db.prepare("SELECT * FROM call_logs WHERE id = ?").get(id) as Record<
+      string,
+      unknown
+    >;
+    assert.equal(JSON.stringify(row).includes(marker), false);
+    assert.equal(row.error_summary, row.error_type);
+    assert.equal(row.detail_state, "none");
+    assert.equal(row.artifact_relpath, null);
+    assert.deepEqual(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS failed FROM call_logs WHERE id = ? AND error_summary IS NOT NULL"
+        )
+        .get(id),
+      { failed: 1 }
+    );
+  }
+  for (const file of fs.readdirSync(dataDir, { recursive: true })) {
+    const absolute = path.join(dataDir, String(file));
+    if (fs.statSync(absolute).isFile()) {
+      assert.equal(fs.readFileSync(absolute).includes(Buffer.from(marker)), false, String(file));
+    }
+  }
+});
+
+test("disabled capture bounds summaries and bypasses an unwritable artifact destination", async () => {
+  process.env.CALL_LOG_CAPTURE_BODIES = "false";
+  const logsDir = path.join(dataDir, "call_logs");
+  const savedDir = path.join(dataDir, "saved_call_logs");
+  fs.renameSync(logsDir, savedDir);
+  fs.writeFileSync(logsDir, "artifact destination blocked");
+  try {
+    for (const [index, error] of ["x".repeat(200), "x".repeat(201), "body}", null].entries()) {
+      const id = `bounded-error-${index}`;
+      await saveCallLog({ ...entry, id, status: 502, error });
+      const row = core
+        .getDbInstance()
+        .prepare("SELECT * FROM call_logs WHERE id = ?")
+        .get(id) as Record<string, unknown>;
+      assert.equal(row.error_summary, index === 0 ? error : row.error_type);
+      assert.equal(row.detail_state, "none");
+      assert.equal(row.artifact_relpath, null);
+    }
+    assert.equal(fs.readFileSync(logsDir, "utf8"), "artifact destination blocked");
+  } finally {
+    fs.unlinkSync(logsDir);
+    fs.renameSync(savedDir, logsDir);
   }
 });

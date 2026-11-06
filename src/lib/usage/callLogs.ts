@@ -704,9 +704,19 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
   const detailState: CallLogDetailState = detailExpected ? "pending" : "none";
   const detailPendingUntil = detailExpected ? Date.now() + 5 * 60_000 : null;
 
+  let errorSummary = toStoredErrorSummary(protectedError);
+  if (!captureBodies && !noLogEnabled) {
+    // Failure analytics use IS NOT NULL. Keep short diagnostics, never embedded
+    // JSON bodies or long upstream prose, even when artifact writing is unavailable.
+    if (errorSummary === null || errorSummary.length > 200 || /[{}]/.test(errorSummary)) {
+      errorSummary =
+        failedResponse || protectedError !== null ? errorType || "upstream error" : null;
+    }
+  }
+
   const insertParams = {
     ...logEntry,
-    errorSummary: toStoredErrorSummary(protectedError),
+    errorSummary,
     detailState,
     detailPendingUntil,
     artifactRelPath: null,
