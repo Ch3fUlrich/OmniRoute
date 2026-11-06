@@ -15,6 +15,7 @@ import { dashboardDetailIo, resolveCallLogDetail } from "./callLogDetailResolver
 import { shouldPersistToDisk } from "./migrations";
 import { updateRequestTokensById } from "./usageHistory";
 import { getCallLogApiKeyContext } from "./callLogApiKeyContext";
+import { getCallLogCaptureBodies } from "../logEnv";
 import { serializeResilienceActions, resetResilienceActions } from "./resilienceActionsContext";
 import { parseResilienceActions } from "./resilienceActionsParse";
 import {
@@ -501,16 +502,17 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
   const apiKeyName = entry.apiKeyName || apiKeyContext?.apiKeyName || null;
   const connectionId = entry.connectionId || apiKeyContext?.connectionId || null;
   const noLogEnabled = Boolean(entry.noLog) || (apiKeyId ? isNoLog(apiKeyId) : false);
+  const captureBodies = !noLogEnabled && getCallLogCaptureBodies();
 
-  const protectedRequestBody = noLogEnabled ? null : protectPayloadForLog(entry.requestBody);
+  const protectedRequestBody = captureBodies ? protectPayloadForLog(entry.requestBody) : null;
   const responseStatus = Number(entry.status);
   const failedResponse = Number.isFinite(responseStatus) && responseStatus >= 400;
-  const protectedResponseBody = noLogEnabled
+  const protectedResponseBody = !captureBodies
     ? null
     : failedResponse
       ? protectErrorPayloadForLog(entry.responseBody)
       : protectPayloadForLog(entry.responseBody);
-  const protectedPipelinePayloads = noLogEnabled
+  const protectedPipelinePayloads = !captureBodies
     ? null
     : protectPipelinePayloads(
         entry.pipelinePayloads ?? entry.pipeline ?? null,
@@ -683,11 +685,11 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
     usageProvenance,
   };
 
-  const requestSummary = noLogEnabled
+  const requestSummary = !captureBodies
     ? null
     : buildRequestSummary(logEntry.requestType, protectedRequestBody);
   const detailExpected =
-    !noLogEnabled &&
+    captureBodies &&
     (protectedRequestBody !== null ||
       protectedResponseBody !== null ||
       protectedError !== null ||
