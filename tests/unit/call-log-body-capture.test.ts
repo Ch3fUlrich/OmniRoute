@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { useDecollidedMigrationsDir } from "./helpers/decollidedMigrationsDir.ts";
 
 useDecollidedMigrationsDir();
@@ -15,6 +16,14 @@ const originalGate = process.env.CALL_LOG_CAPTURE_BODIES;
 const core = await import("../../src/lib/db/core.ts");
 const { saveCallLog, getCallLogs, getCallLogById } =
   await import("../../src/lib/usage/callLogs.ts");
+
+test.beforeEach((t) => {
+  const savedGate = process.env.CALL_LOG_CAPTURE_BODIES;
+  t.after(() => {
+    if (savedGate === undefined) delete process.env.CALL_LOG_CAPTURE_BODIES;
+    else process.env.CALL_LOG_CAPTURE_BODIES = savedGate;
+  });
+});
 
 test.after(() => {
   core.resetDbInstance();
@@ -86,7 +95,7 @@ test("gate off retains error classification without writing an error-only artifa
     .getDbInstance()
     .prepare("SELECT * FROM call_logs WHERE id = ?")
     .get("error-only") as Record<string, unknown>;
-  assert.equal(row.error_summary, "upstream timeout");
+  assert.equal(row.error_summary, "server_error");
   assert.equal(row.error_type, "server_error");
   assert.equal(row.detail_state, "none");
   assert.equal(row.artifact_relpath, null);
@@ -99,7 +108,12 @@ test("unset, empty and true write artifacts, and switching off leaves existing d
     else process.env.CALL_LOG_CAPTURE_BODIES = gate;
     const id = `enabled-${gate}`;
     await saveCallLog({ ...entry, id });
-    const detail = await getCallLogById(id);
+    let detail = await getCallLogById(id);
+    const deadline = Date.now() + 5000;
+    while (detail?.detailState === "pending" && Date.now() < deadline) {
+      await setTimeout(20);
+      detail = await getCallLogById(id);
+    }
     assert.equal(detail?.detailState, "ready");
     const artifact = path.join(dataDir, "call_logs", detail!.artifactRelPath!);
     assert.ok(fs.existsSync(artifact));
@@ -113,16 +127,20 @@ test("unset, empty and true write artifacts, and switching off leaves existing d
   }
 });
 
-test("disabled values exclude embedded error bodies from every column and file", async () => {
+test("disabled values exclude short prompt echoes from every column and file", async () => {
   const marker = "BODY_CAPTURE_ERROR_MARKER";
-  for (const gate of ["false", "0", "off"]) {
+  for (const gate of ["false", "0", "off", "flase"]) {
     process.env.CALL_LOG_CAPTURE_BODIES = gate;
     const id = `embedded-error-${gate}`;
     await saveCallLog({
       ...entry,
       id,
       status: 502,
-      error: `upstream response: {"body":"${marker}"}`,
+      requestBody: { messages: [{ role: "user", content: marker }] },
+      responseBody: { choices: [{ message: { content: marker } }] },
+      pipelinePayloads: { providerRequest: { body: marker }, clientResponse: marker },
+      error: `upstream echoed ${marker}`,
+      noLog: gate === "off",
     });
     const db = core.getDbInstance();
     const row = db.prepare("SELECT * FROM call_logs WHERE id = ?").get(id) as Record<
@@ -130,7 +148,7 @@ test("disabled values exclude embedded error bodies from every column and file",
       unknown
     >;
     assert.equal(JSON.stringify(row).includes(marker), false);
-    assert.equal(row.error_summary, row.error_type);
+    assert.equal(row.error_summary, row.error_type || "upstream error");
     assert.equal(row.detail_state, "none");
     assert.equal(row.artifact_relpath, null);
     assert.deepEqual(
@@ -142,6 +160,14 @@ test("disabled values exclude embedded error bodies from every column and file",
       { failed: 1 }
     );
   }
+  await saveCallLog({ id: "unclassified-echo", status: 200, error: marker, noLog: true });
+  const unclassified = core
+    .getDbInstance()
+    .prepare("SELECT * FROM call_logs WHERE id = ?")
+    .get("unclassified-echo") as Record<string, unknown>;
+  assert.equal(unclassified.error_type, null);
+  assert.equal(unclassified.error_summary, "upstream error");
+  assert.equal(JSON.stringify(unclassified).includes(marker), false);
   for (const file of fs.readdirSync(dataDir, { recursive: true })) {
     const absolute = path.join(dataDir, String(file));
     if (fs.statSync(absolute).isFile()) {
@@ -150,27 +176,43 @@ test("disabled values exclude embedded error bodies from every column and file",
   }
 });
 
-test("disabled capture bounds summaries and bypasses an unwritable artifact destination", async () => {
+test("gate off allowlists reasoning effort, including noLog rows", async () => {
   process.env.CALL_LOG_CAPTURE_BODIES = "false";
-  const logsDir = path.join(dataDir, "call_logs");
-  const savedDir = path.join(dataDir, "saved_call_logs");
-  fs.renameSync(logsDir, savedDir);
-  fs.writeFileSync(logsDir, "artifact destination blocked");
-  try {
-    for (const [index, error] of ["x".repeat(200), "x".repeat(201), "body}", null].entries()) {
-      const id = `bounded-error-${index}`;
-      await saveCallLog({ ...entry, id, status: 502, error });
+  const marker = "REASONING_BODY_MARKER".repeat(30);
+  for (const noLog of [false, true]) {
+    for (const effort of [
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "auto",
+      marker,
+    ]) {
+      const id = `effort-${noLog}-${effort === marker ? "invalid" : effort}`;
+      await saveCallLog({
+        ...entry,
+        id,
+        noLog,
+        requestBody: { reasoning_effort: effort },
+        upstreamRequestBody: { reasoning: { effort } },
+        responseBody: { output: [{ type: "reasoning", encrypted_content: marker, summary: [] }] },
+      });
       const row = core
         .getDbInstance()
         .prepare("SELECT * FROM call_logs WHERE id = ?")
         .get(id) as Record<string, unknown>;
-      assert.equal(row.error_summary, index === 0 ? error : row.error_type);
-      assert.equal(row.detail_state, "none");
-      assert.equal(row.artifact_relpath, null);
+      assert.equal(row.reasoning_source, "encrypted");
+      assert.equal(row.reasoning_effort_requested, effort === marker ? null : effort);
+      assert.equal(row.reasoning_effort_upstream, effort === marker ? null : effort);
+      assert.equal(JSON.stringify(row).includes(marker), false);
     }
-    assert.equal(fs.readFileSync(logsDir, "utf8"), "artifact destination blocked");
-  } finally {
-    fs.unlinkSync(logsDir);
-    fs.renameSync(savedDir, logsDir);
+  }
+  for (const file of fs.readdirSync(dataDir, { recursive: true })) {
+    const absolute = path.join(dataDir, String(file));
+    if (fs.statSync(absolute).isFile())
+      assert.equal(fs.readFileSync(absolute).includes(Buffer.from(marker)), false, String(file));
   }
 });

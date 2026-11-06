@@ -502,7 +502,8 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
   const apiKeyName = entry.apiKeyName || apiKeyContext?.apiKeyName || null;
   const connectionId = entry.connectionId || apiKeyContext?.connectionId || null;
   const noLogEnabled = Boolean(entry.noLog) || (apiKeyId ? isNoLog(apiKeyId) : false);
-  const captureBodies = !noLogEnabled && getCallLogCaptureBodies();
+  const captureBodiesEnabled = getCallLogCaptureBodies();
+  const captureBodies = !noLogEnabled && captureBodiesEnabled;
 
   const protectedRequestBody = captureBodies ? protectPayloadForLog(entry.requestBody) : null;
   const responseStatus = Number(entry.status);
@@ -587,11 +588,16 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
     if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
     const record = body as Record<string, unknown>;
     const direct = record.reasoning_effort;
-    if (typeof direct === "string" && direct.trim().length > 0) return direct;
+    const allowed = (value: unknown): value is string =>
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      (captureBodiesEnabled ||
+        ["none", "minimal", "low", "medium", "high", "xhigh", "max", "auto"].includes(value));
+    if (allowed(direct)) return direct;
     const nested = record.reasoning;
     if (nested !== null && typeof nested === "object" && !Array.isArray(nested)) {
       const effort = (nested as Record<string, unknown>).effort;
-      if (typeof effort === "string" && effort.trim().length > 0) return effort;
+      if (allowed(effort)) return effort;
     }
     return null;
   };
@@ -704,15 +710,12 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
   const detailState: CallLogDetailState = detailExpected ? "pending" : "none";
   const detailPendingUntil = detailExpected ? Date.now() + 5 * 60_000 : null;
 
-  let errorSummary = toStoredErrorSummary(protectedError);
-  if (!captureBodies && !noLogEnabled) {
-    // Failure analytics use IS NOT NULL. Keep short diagnostics, never embedded
-    // JSON bodies or long upstream prose, even when artifact writing is unavailable.
-    if (errorSummary === null || errorSummary.length > 200 || /[{}]/.test(errorSummary)) {
-      errorSummary =
-        failedResponse || protectedError !== null ? errorType || "upstream error" : null;
-    }
-  }
+  // Failure analytics use IS NOT NULL; no provider prose is safe from prompt echoes.
+  const errorSummary = captureBodiesEnabled
+    ? toStoredErrorSummary(protectedError)
+    : failedResponse || protectedError !== null
+      ? errorType || "upstream error"
+      : null;
 
   const insertParams = {
     ...logEntry,

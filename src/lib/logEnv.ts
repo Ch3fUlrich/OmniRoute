@@ -84,7 +84,8 @@ export function getCallLogRetentionDays(): number {
 }
 
 export function getCallLogCaptureBodies(): boolean {
-  return parseBoolean(process.env.CALL_LOG_CAPTURE_BODIES, true);
+  const value = process.env.CALL_LOG_CAPTURE_BODIES;
+  return value === undefined || value === "" ? true : parseBoolean(value, false);
 }
 
 /**
