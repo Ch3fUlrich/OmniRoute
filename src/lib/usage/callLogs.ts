@@ -15,6 +15,7 @@ import { dashboardDetailIo, resolveCallLogDetail } from "./callLogDetailResolver
 import { shouldPersistToDisk } from "./migrations";
 import { updateRequestTokensById } from "./usageHistory";
 import { getCallLogApiKeyContext } from "./callLogApiKeyContext";
+import { getCallLogCaptureBodies } from "../logEnv";
 import { serializeResilienceActions, resetResilienceActions } from "./resilienceActionsContext";
 import { parseResilienceActions } from "./resilienceActionsParse";
 import {
@@ -501,16 +502,18 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
   const apiKeyName = entry.apiKeyName || apiKeyContext?.apiKeyName || null;
   const connectionId = entry.connectionId || apiKeyContext?.connectionId || null;
   const noLogEnabled = Boolean(entry.noLog) || (apiKeyId ? isNoLog(apiKeyId) : false);
+  const captureBodiesEnabled = getCallLogCaptureBodies();
+  const captureBodies = !noLogEnabled && captureBodiesEnabled;
 
-  const protectedRequestBody = noLogEnabled ? null : protectPayloadForLog(entry.requestBody);
+  const protectedRequestBody = captureBodies ? protectPayloadForLog(entry.requestBody) : null;
   const responseStatus = Number(entry.status);
   const failedResponse = Number.isFinite(responseStatus) && responseStatus >= 400;
-  const protectedResponseBody = noLogEnabled
+  const protectedResponseBody = !captureBodies
     ? null
     : failedResponse
       ? protectErrorPayloadForLog(entry.responseBody)
       : protectPayloadForLog(entry.responseBody);
-  const protectedPipelinePayloads = noLogEnabled
+  const protectedPipelinePayloads = !captureBodies
     ? null
     : protectPipelinePayloads(
         entry.pipelinePayloads ?? entry.pipeline ?? null,
@@ -585,11 +588,16 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
     if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
     const record = body as Record<string, unknown>;
     const direct = record.reasoning_effort;
-    if (typeof direct === "string" && direct.trim().length > 0) return direct;
+    const allowed = (value: unknown): value is string =>
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      (captureBodiesEnabled ||
+        ["none", "minimal", "low", "medium", "high", "xhigh", "max", "auto"].includes(value));
+    if (allowed(direct)) return direct;
     const nested = record.reasoning;
     if (nested !== null && typeof nested === "object" && !Array.isArray(nested)) {
       const effort = (nested as Record<string, unknown>).effort;
-      if (typeof effort === "string" && effort.trim().length > 0) return effort;
+      if (allowed(effort)) return effort;
     }
     return null;
   };
@@ -683,11 +691,11 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
     usageProvenance,
   };
 
-  const requestSummary = noLogEnabled
+  const requestSummary = !captureBodies
     ? null
     : buildRequestSummary(logEntry.requestType, protectedRequestBody);
   const detailExpected =
-    !noLogEnabled &&
+    captureBodies &&
     (protectedRequestBody !== null ||
       protectedResponseBody !== null ||
       protectedError !== null ||
@@ -702,9 +710,16 @@ async function buildCallLogRow(entry: any): Promise<PreparedCallLogRow> {
   const detailState: CallLogDetailState = detailExpected ? "pending" : "none";
   const detailPendingUntil = detailExpected ? Date.now() + 5 * 60_000 : null;
 
+  // Failure analytics use IS NOT NULL; no provider prose is safe from prompt echoes.
+  const errorSummary = captureBodiesEnabled
+    ? toStoredErrorSummary(protectedError)
+    : failedResponse || protectedError !== null
+      ? errorType || "upstream error"
+      : null;
+
   const insertParams = {
     ...logEntry,
-    errorSummary: toStoredErrorSummary(protectedError),
+    errorSummary,
     detailState,
     detailPendingUntil,
     artifactRelPath: null,

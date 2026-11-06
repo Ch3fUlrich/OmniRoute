@@ -83,6 +83,11 @@ export function getCallLogRetentionDays(): number {
   return parsePositiveInt(process.env.CALL_LOG_RETENTION_DAYS, DEFAULT_CALL_LOG_RETENTION_DAYS);
 }
 
+export function getCallLogCaptureBodies(): boolean {
+  const value = process.env.CALL_LOG_CAPTURE_BODIES;
+  return value === undefined || value === "" ? true : parseBoolean(value, false);
+}
+
 /**
  * Returns the explicit operator-set retention override (a positive integer), or `null`
  * when the env var is unset/empty/invalid. Callers give an explicit env var precedence
