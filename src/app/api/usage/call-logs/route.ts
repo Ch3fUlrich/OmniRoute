@@ -263,9 +263,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
 
     const bearer = extractBearer(request);
-    const callerToken =
-      bearer && bearer.startsWith(ACCESS_TOKEN_PREFIX) ? verifyAccessToken(bearer) : null;
-    const isLimited = isLimitedScope(callerToken?.scope);
+    const hasAccessToken = Boolean(bearer?.startsWith(ACCESS_TOKEN_PREFIX));
+    const callerToken = hasAccessToken ? verifyAccessToken(bearer) : null;
+    // Auth may accept a session or open mode before inspecting the Bearer token.
+    // A failed second verification must never widen that token's log access.
+    const isLimited = hasAccessToken && (!callerToken || isLimitedScope(callerToken.scope));
 
     const filter: Record<string, any> = {};
     if (searchParams.get("status")) filter.status = searchParams.get("status");
