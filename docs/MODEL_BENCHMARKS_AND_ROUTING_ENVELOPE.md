@@ -14,7 +14,7 @@ OmniRoute introduces an integrated **SQLite Model Benchmarks Catalog** and an op
 
 ---
 
-## 2. SQLite Model Benchmarks Schema (`213_model_benchmarks.sql`)
+## 2. SQLite Model Benchmarks Schema (`228_model_benchmarks.sql`)
 
 The `model_benchmarks` table stores verified benchmark and execution metrics in OmniRoute's SQLite database:
 

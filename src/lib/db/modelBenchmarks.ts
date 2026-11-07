@@ -5,7 +5,7 @@
  * intelligence index, coding/agentic scores, SWE benchmarks, verified throughput (tok/s),
  * task cost (USD), price-cliff guardrails, and safe reasoning effort caps.
  *
- * @see Migration 213_model_benchmarks.sql
+ * @see Migration 228_model_benchmarks.sql
  */
 
 import { getDbInstance, rowToCamel } from "./core";
