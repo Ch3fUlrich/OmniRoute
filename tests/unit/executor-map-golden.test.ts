@@ -74,6 +74,24 @@ function describeExecutor(instance: unknown): {
 
 const specializedKeys = readSpecializedKeys();
 
+test("fork ACP dispatch preserves qoder HTTP routing and caches its own executor", async () => {
+  assert.equal(hasSpecializedExecutor("qoder-acp"), true);
+  const acp = await getExecutor("qoder-acp");
+  const qoder = await getExecutor("qoder");
+  assert.deepEqual(describeExecutor(acp), {
+    className: "AcpExecutor",
+    provider: "qoder-acp",
+    configSource: "<custom-config>",
+  });
+  assert.deepEqual(describeExecutor(qoder), {
+    className: "QoderExecutor",
+    provider: "qoder",
+    configSource: "qoder",
+  });
+  assert.notEqual(acp, qoder, "ACP must not share HTTP executor state");
+  assert.equal(await getExecutor("qoder-acp"), acp, "ACP executor must be cached");
+});
+
 test("golden: specialized executor map — key → class + provider identity + config source", async () => {
   assert.ok(specializedKeys.length >= 100, `suspiciously few keys: ${specializedKeys.length}`);
 
