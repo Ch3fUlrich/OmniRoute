@@ -48,7 +48,7 @@ function main() {
   }
 
   console.log("[open-sse-typecheck] Running tsc scoped to open-sse/ workspace…");
-  const stdout = runScopedTypecheck(ROOT, TSCONFIG);
+  const stdout = runScopedTypecheck(ROOT, TSCONFIG, { incremental: false });
   const live = parseTscOutput(stdout);
   const baseline = loadBaseline();
   const { regressions, improvements } = diffAgainstBaseline(live, baseline);
