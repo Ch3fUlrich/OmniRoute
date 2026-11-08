@@ -20,7 +20,7 @@ import {
   type ConnectionCacheOverride,
 } from "../../utils/cacheControlPolicy.ts";
 import { FORMATS } from "../../translator/formats.ts";
-import { stripInternalBodyFields } from "../../config/cliFingerprints.ts";
+import { omitRoutingBodyFields, stripInternalBodyFields } from "../../config/cliFingerprints.ts";
 import { readBodyReasoningEffort } from "../../executors/base/reasoningEffort.ts";
 import { sanitizeRequestForResolvedTarget } from "../../services/targetRequestSanitizer.ts";
 import { getForcedReasoningEffort } from "../../utils/reasoningRuleContext.ts";
@@ -389,9 +389,7 @@ function normalizeAttemptBody(opts: PrepareUpstreamBodyOptions): Body {
     translatedBody.thinking !== undefined ||
     hasExplicitTemplateReasoning;
   // Internal routing metadata may contain non-cloneable objects (for example Headers).
-  const upstreamBody = Object.fromEntries(
-    Object.entries(translatedBody).filter(([key]) => !key.startsWith("_omniroute"))
-  );
+  const upstreamBody = omitRoutingBodyFields(translatedBody);
   // Codex's Responses transform normalizes input into new item records before
   // mutation and independently copies its mutable tools/reasoning fields.
   // Keep the potentially huge input history shared until that boundary: the

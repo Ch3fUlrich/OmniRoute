@@ -91,6 +91,7 @@ import {
 import { applyRequestTagRouting } from "./autoStrategy.ts";
 import {
   extractRoutingEnvelope,
+  filterTargetsByRequestEnvelope,
   shouldBypassSessionStickiness,
 } from "./requestEnvelopeFilter.ts";
 import { getStrategyTraits, type StrategyTraits } from "./strategyRegistry.ts";
@@ -601,13 +602,18 @@ async function applyContinuityFilters(
   );
   if (orderedTargets.length === 0 && preCompatTargets.length > 0) {
     const envelope = extractRoutingEnvelope(body);
-    if (envelope?.taskRole === "review") {
-      const authorFamily = envelope.authorModel ? detectModelFamily(envelope.authorModel) : "author";
+    if (
+      envelope?.taskRole === "review" &&
+      filterTargetsByRequestEnvelope(preCompatTargets, {
+        taskRole: "review",
+        authorModel: envelope.authorModel,
+        excludeFamilies: envelope.excludeFamilies,
+      }).length === 0
+    ) {
+      const authorFamily = envelope.authorModel
+        ? detectModelFamily(envelope.authorModel)
+        : "author";
       const message = `All targets for combo "${combo.name}" were excluded by cross-family review policy (author family: ${authorFamily ?? "unknown"}). Review cannot be self-performed.`;
-      const effectiveSessionId: string | null = combo.context_cache_protection
-        ? (relayOptions?.sessionId ?? null)
-        : null;
-      recordComboFailure(effectiveSessionId, combo.name);
       return {
         earlyResponse: errorResponseWithComboDiagnostics(
           400,

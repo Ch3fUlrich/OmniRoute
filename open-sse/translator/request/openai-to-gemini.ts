@@ -710,6 +710,9 @@ function openaiToGeminiBase(
     result.contents = stripTrailingGeminiModelTurns(result.contents);
   }
   // Vertex turn-shape rejections (mixed functionResponse turn, model tail, empty refill).
+  // Keep this provider-wide: even older Gemini targets require functionResponse-only
+  // turns to remain distinct from following user text. This guard also repairs empty
+  // histories; already valid user-ending histories are unchanged. Cloud Code opts out.
   result.contents = guardGeminiTrailingTurn(result.contents, {
     splitMixedTurns: !baseOptions.preserveCloudCodeTurns,
     popTrailingModel: !baseOptions.preserveCloudCodeTurns,

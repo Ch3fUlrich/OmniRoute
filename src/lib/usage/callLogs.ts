@@ -573,7 +573,7 @@ async function buildCallLogRow(entry: any, metadataOnly = false): Promise<Prepar
         entry.pipelinePayloads ?? entry.pipeline ?? null,
         failedResponse ? responseStatus : undefined
       );
-  const protectedError = sanitizeErrorForLog(entry.error);
+  const protectedError = captureBodies ? sanitizeErrorForLog(entry.error) : null;
 
   // Bridges the window before this row's own artifact write (queued below,
   // async) lands with detail_state = 'ready': a client that fires its next
@@ -758,11 +758,9 @@ async function buildCallLogRow(entry: any, metadataOnly = false): Promise<Prepar
 
   const legacySummary = buildRequestSummary(logEntry.requestType, protectedRequestBody);
   const upstreamHttp = parseUpstreamHttp(entry.upstreamHttp);
-  const requestSummary = !captureBodies
-    ? null
-    : upstreamHttp
-      ? JSON.stringify({ ...(legacySummary ? JSON.parse(legacySummary) : {}), upstreamHttp })
-      : legacySummary;
+  const requestSummary = upstreamHttp
+    ? JSON.stringify({ ...(legacySummary ? JSON.parse(legacySummary) : {}), upstreamHttp })
+    : legacySummary;
   const detailExpected =
     !metadataOnly &&
     captureBodies &&
@@ -781,9 +779,9 @@ async function buildCallLogRow(entry: any, metadataOnly = false): Promise<Prepar
   const detailPendingUntil = detailExpected ? Date.now() + 5 * 60_000 : null;
 
   // Failure analytics use IS NOT NULL; no provider prose is safe from prompt echoes.
-  const errorSummary = captureBodiesEnabled
+  const errorSummary = captureBodies
     ? toStoredErrorSummary(protectedError)
-    : failedResponse || protectedError !== null
+    : failedResponse || entry.error != null
       ? errorType || "upstream error"
       : null;
 

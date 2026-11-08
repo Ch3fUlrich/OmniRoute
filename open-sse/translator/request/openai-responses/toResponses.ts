@@ -156,9 +156,13 @@ function responsesProviderRequiresReasoningPresence(provider: unknown, model: un
     .toLowerCase();
   return (
     normalizedProvider === "xiaomi-mimo" ||
-    /(^|\/)mimo([-/._]|$)/i.test(normalizedModel) ||
+    /^(?:xiaomi\/)?mimo-v\d+(?:\.\d+)?-(?:pro|flash)(?:-(?:thinking|reasoning))?$/.test(
+      normalizedModel
+    ) ||
     normalizedProvider === "deepseek" ||
-    /(^|\/)deepseek([-/._]|$)/i.test(normalizedModel)
+    /^(?:deepseek\/)?deepseek-(?:chat|reasoner|v\d+(?:\.\d+)?(?:-(?:flash|pro))?)$/.test(
+      normalizedModel
+    )
   );
 }
 
@@ -322,6 +326,16 @@ export function openaiToOpenAIResponsesRequest(
         });
       } else if (
         (reasoningIsPlaceholder || !reasoning) &&
+        (toRecord(root.thinking).type === "enabled" ||
+          toRecord(root.thinking).type === "adaptive" ||
+          root.thinking === true ||
+          toRecord(root.chat_template_kwargs).thinking === true ||
+          toRecord(root.chat_template_kwargs).enable_thinking === true ||
+          [root.reasoning_effort, toRecord(root.reasoning).effort].some(
+            (effort) =>
+              typeof effort === "string" &&
+              !["none", "off", "disabled", ""].includes(effort.toLowerCase())
+          )) &&
         responsesProviderRequiresReasoningPresence(credentialRecord._provider, model) &&
         Array.isArray(msg.tool_calls) &&
         msg.tool_calls.length > 0

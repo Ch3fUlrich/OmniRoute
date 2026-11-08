@@ -5,13 +5,30 @@ import assert from "node:assert/strict";
 // "Requests ending with a model turn are not supported" for a user turn that mixes a
 // functionResponse part with other parts. guardGeminiTrailingTurn fixes both shapes.
 
-const { guardGeminiTrailingTurn, openaiToGeminiRequest } = await import(
-  "../../open-sse/translator/request/openai-to-gemini.ts"
-);
+const { guardGeminiTrailingTurn, openaiToGeminiRequest } =
+  await import("../../open-sse/translator/request/openai-to-gemini.ts");
 
 const fr = (name: string) => ({ functionResponse: { name, response: { ok: true } } });
 const user = (...parts: Array<Record<string, unknown>>) => ({ role: "user", parts });
 const model = (...parts: Array<Record<string, unknown>>) => ({ role: "model", parts });
+
+test("accepted user-ending shapes are unchanged across Gemini model generations", () => {
+  const body = {
+    messages: [
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "hi" },
+      { role: "user", content: "continue" },
+    ],
+  };
+  for (const target of ["gemini-2.5-pro", "gemini-3-pro-preview"]) {
+    const result = openaiToGeminiRequest(target, body, false, null) as { contents: unknown[] };
+    assert.deepEqual(result.contents, [
+      user({ text: "hello" }),
+      model({ text: "hi" }),
+      user({ text: "continue" }),
+    ]);
+  }
+});
 
 test("lone model turn is popped and refilled with a Continue user turn", () => {
   assert.deepEqual(guardGeminiTrailingTurn([model({ text: "x" })]), [user({ text: "Continue." })]);
@@ -23,9 +40,10 @@ test("model tail behind a user history is popped", () => {
 });
 
 test("several trailing model turns and an all-model history", () => {
-  assert.deepEqual(guardGeminiTrailingTurn([user({ text: "a" }), model({ text: "b" }), model({ text: "c" })]), [
-    user({ text: "a" }),
-  ]);
+  assert.deepEqual(
+    guardGeminiTrailingTurn([user({ text: "a" }), model({ text: "b" }), model({ text: "c" })]),
+    [user({ text: "a" })]
+  );
   assert.deepEqual(guardGeminiTrailingTurn([model({ text: "b" }), model({ text: "c" })]), [
     user({ text: "Continue." }),
   ]);
@@ -78,7 +96,12 @@ test("malformed entries are skipped, parts null/missing tolerated, model-side fu
     model(fr("f")),
     user({ text: "t" }),
   ] as unknown);
-  assert.deepEqual(out, [{ role: "user", parts: null }, { role: "user" }, model(fr("f")), user({ text: "t" })]);
+  assert.deepEqual(out, [
+    { role: "user", parts: null },
+    { role: "user" },
+    model(fr("f")),
+    user({ text: "t" }),
+  ]);
 });
 
 test("openaiToGeminiRequest: tool result followed by user text ends on user with a split", () => {

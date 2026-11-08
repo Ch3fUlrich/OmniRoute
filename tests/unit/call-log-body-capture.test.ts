@@ -102,6 +102,34 @@ test("gate off retains error classification without writing an error-only artifa
   assert.equal(fs.existsSync(path.join(dataDir, "call_logs")), false);
 });
 
+test("gate off preserves upstream HTTP row metadata without capturing error prose", async () => {
+  process.env.CALL_LOG_CAPTURE_BODIES = "false";
+  const upstreamHttp = {
+    version: 1,
+    groupId: "00000000-0000-4000-8000-000000000001",
+    role: "logical",
+    send: null,
+    total: 0,
+    failed: 0,
+    omitted: 0,
+    logicalOutcome: "failure",
+  };
+  await saveCallLog({
+    ...entry,
+    id: "metadata-error",
+    status: 502,
+    error: "PRIVATE_PAYLOAD_MARKER",
+    upstreamHttp,
+  });
+  const row = core
+    .getDbInstance()
+    .prepare("SELECT * FROM call_logs WHERE id = ?")
+    .get("metadata-error") as Record<string, unknown>;
+  assert.deepEqual(JSON.parse(String(row.request_summary)), { upstreamHttp });
+  assert.equal(JSON.stringify(row).includes("PRIVATE_PAYLOAD_MARKER"), false);
+  assert.equal(row.detail_state, "none");
+});
+
 test("unset, empty and true write artifacts, and switching off leaves existing details readable", async () => {
   for (const gate of [undefined, "", "true"]) {
     if (gate === undefined) delete process.env.CALL_LOG_CAPTURE_BODIES;
