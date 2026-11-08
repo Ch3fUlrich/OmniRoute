@@ -278,6 +278,19 @@ test("absent and explicitly enabled thinking synthesize a reasoning item", () =>
     assert.ok(reasoningIndexOf(input) < functionCallIndexOf(input));
   }
 });
+for (const [label, controls, disabled] of [
+  ["thinking array", { thinking: ["disabled"] }, false],
+  ["template thinking array", { chat_template_kwargs: { thinking: ["0"] } }, false],
+  ["template thinking object", { chat_template_kwargs: { thinking: { type: "disabled" } } }, true],
+  ["null-prototype thinking", { thinking: Object.create(null) }, false],
+] as const) {
+  test(`L3 ${label} handles disable without coercion`, () => {
+    const { input } = translate("deepseek-chat", { messages: toolCallHistory, ...controls }, {});
+    assert.equal(reasoningIndexOf(input) >= 0, !disabled);
+    assert.ok(functionCallIndexOf(input) >= 0);
+  });
+}
+
 test("lookalike family names do not synthesize reasoning", () => {
   for (const model of ["deepseek-unrelated-model", "mimo-custom", "other/deepseek-chat"]) {
     const { input } = translate(

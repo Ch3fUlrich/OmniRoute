@@ -163,7 +163,21 @@ function responsesProviderRequiresReasoningPresence(provider: unknown, model: un
 }
 
 function isExplicitThinkingDisable(value: unknown): boolean {
-  return ["disabled", "false", "0", "none", "off"].includes(String(value).toLowerCase());
+  if (typeof value === "string") {
+    return ["disabled", "false", "0", "none", "off"].includes(value.toLowerCase());
+  }
+  if (typeof value === "number") return value === 0;
+  if (typeof value === "boolean") return value === false;
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) !== null
+  ) {
+    const type = (value as JsonRecord).type;
+    return typeof type === "string" && type.toLowerCase() === "disabled";
+  }
+  return false;
 }
 
 export function openaiToOpenAIResponsesRequest(
@@ -327,7 +341,6 @@ export function openaiToOpenAIResponsesRequest(
       } else if (
         (reasoningIsPlaceholder || !reasoning) &&
         !(
-          toRecord(root.thinking).type === "disabled" ||
           [
             root.thinking,
             root.reasoning,
