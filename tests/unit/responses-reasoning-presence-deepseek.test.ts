@@ -112,9 +112,9 @@ test("a placeholder reasoning_content on the turn is re-emitted as a reasoning i
 // Model-id matching without a threaded provider id (combo/registry paths).
 test("a deepseek/mimo model id alone is enough to require the reasoning item", () => {
   for (const [model, credentials] of [
-    ["deepseek-chat", null],
-    ["xiaomi/mimo-v2.5-pro", null],
-    ["mimo-v2.6-flash", { _provider: "xiaomi-mimo" }],
+    ["deepseek-chat", {}],
+    ["xiaomi/mimo-v2.5-pro", {}],
+    ["mimo-v2.6-flash", {}],
     ...[
       "deepseek-v4-pro",
       "deepseek-v4-flash",
@@ -239,6 +239,11 @@ test("explicitly disabled thinking never synthesizes a reasoning item", () => {
     ...[0, "false", "disabled", "0", "none", "off"].map((thinking) => ({ thinking })),
     { reasoning: false },
     { reasoning: "false" },
+    { thinking: "DISABLED" },
+    { reasoning: "FALSE" },
+    { chat_template_kwargs: { enable_thinking: "Off" } },
+    { thinking: { type: "DISABLED" } },
+    { chat_template_kwargs: { thinking: { type: "DiSaBlEd" } } },
     ...["disabled", "false", "0", "none", "off", 0].flatMap((value) => [
       { chat_template_kwargs: { thinking: value } },
       { chat_template_kwargs: { enable_thinking: value } },
@@ -299,5 +304,13 @@ test("lookalike family names do not synthesize reasoning", () => {
       null
     );
     assert.equal(reasoningIndexOf(input), -1);
+  }
+});
+
+test("provider-less lookalike family names do not synthesize reasoning", () => {
+  for (const model of ["deepseek-unrelated-model", "mimo-custom", "other/deepseek-chat"]) {
+    const { input } = translate(model, { messages: toolCallHistory }, {});
+    assert.equal(reasoningIndexOf(input), -1, model);
+    assert.ok(functionCallIndexOf(input) >= 0, model);
   }
 });
