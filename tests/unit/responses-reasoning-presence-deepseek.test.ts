@@ -115,13 +115,22 @@ test("a deepseek/mimo model id alone is enough to require the reasoning item", (
     ["deepseek-chat", null],
     ["xiaomi/mimo-v2.5-pro", null],
     ["mimo-v2.6-flash", { _provider: "xiaomi-mimo" }],
-    ...["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-reasoner"].flatMap((model) => [
-      [model, null],
-      [`deepseek/${model}`, null],
+    ...[
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "deepseek-reasoner",
+      "deepseek-v4-flash-20250101",
+      "deepseek-v4-pro-preview",
+      "deepseek-chat-v3-0324",
+    ].flatMap((model) => [
+      [model, {}],
+      [`deepseek/${model}`, {}],
+      [model.toUpperCase(), {}],
     ]),
-    ...["mimo-v2.6-pro", "mimo-v2.6-flash"].flatMap((model) => [
-      [model, null],
-      [`xiaomi/${model}`, null],
+    ...["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-ultra"].flatMap((model) => [
+      [model, {}],
+      [`xiaomi/${model}`, {}],
+      [model.toUpperCase(), {}],
     ]),
   ] as const) {
     const { input } = translate(model, { messages: toolCallHistory }, credentials);
@@ -133,6 +142,25 @@ test("a deepseek/mimo model id alone is enough to require the reasoning item", (
     );
   }
 });
+
+for (const model of [
+  "deepseek-v4-flash-20250101",
+  "deepseek-v4-pro-preview",
+  "deepseek-chat-v3-0324",
+  "mimo-v2.6-ultra",
+]) {
+  for (const id of [model, `${model.startsWith("mimo") ? "xiaomi" : "deepseek"}/${model}`]) {
+    test(`provider-less suffixed model ${id} synthesizes reasoning`, () => {
+      const { input } = translate(id, { messages: toolCallHistory }, {});
+      const index = reasoningIndexOf(input);
+      assert.ok(index >= 0, `${id}: expected synthetic reasoning`);
+      assert.ok(index < functionCallIndexOf(input));
+      assert.deepEqual(input[index].content, [
+        { type: "reasoning_text", text: NON_ANTHROPIC_THINKING_PLACEHOLDER },
+      ]);
+    });
+  }
+}
 
 // Real reasoning is untouched: it passes through verbatim and no placeholder
 // item is added alongside it.
@@ -208,6 +236,13 @@ test("explicitly disabled thinking never synthesizes a reasoning item", () => {
   for (const controls of [
     { thinking: { type: "disabled" } },
     { thinking: false },
+    ...[0, "false", "disabled", "0", "none", "off"].map((thinking) => ({ thinking })),
+    { reasoning: false },
+    { reasoning: "false" },
+    ...["disabled", "false", "0", "none", "off", 0].flatMap((value) => [
+      { chat_template_kwargs: { thinking: value } },
+      { chat_template_kwargs: { enable_thinking: value } },
+    ]),
     { chat_template_kwargs: { thinking: false } },
     { chat_template_kwargs: { enable_thinking: false } },
     ...["none", "off", "disabled", "NONE"].flatMap((effort) => [
@@ -220,7 +255,7 @@ test("explicitly disabled thinking never synthesizes a reasoning item", () => {
       { messages: toolCallHistory, ...controls },
       { _provider: "deepseek" }
     );
-    assert.equal(reasoningIndexOf(input), -1);
+    assert.equal(reasoningIndexOf(input), -1, JSON.stringify(controls));
   }
 });
 test("absent and explicitly enabled thinking synthesize a reasoning item", () => {

@@ -156,14 +156,14 @@ function responsesProviderRequiresReasoningPresence(provider: unknown, model: un
     .toLowerCase();
   return (
     normalizedProvider === "xiaomi-mimo" ||
-    /^(?:xiaomi\/)?mimo-v\d+(?:\.\d+)?-(?:pro|flash)(?:-(?:thinking|reasoning))?$/.test(
-      normalizedModel
-    ) ||
+    /^(?:xiaomi\/)?mimo-v\d[\w.-]*$/i.test(normalizedModel) ||
     normalizedProvider === "deepseek" ||
-    /^(?:deepseek\/)?deepseek-(?:chat|reasoner|v\d+(?:\.\d+)?(?:-(?:flash|pro))?)$/.test(
-      normalizedModel
-    )
+    /^(?:deepseek\/)?deepseek-(?:chat|reasoner|v\d)[\w.-]*$/i.test(normalizedModel)
   );
+}
+
+function isExplicitThinkingDisable(value: unknown): boolean {
+  return ["disabled", "false", "0", "none", "off"].includes(String(value).toLowerCase());
 }
 
 export function openaiToOpenAIResponsesRequest(
@@ -328,13 +328,12 @@ export function openaiToOpenAIResponsesRequest(
         (reasoningIsPlaceholder || !reasoning) &&
         !(
           toRecord(root.thinking).type === "disabled" ||
-          root.thinking === "disabled" ||
-          root.thinking === false ||
-          root.reasoning === false ||
           [
+            root.thinking,
+            root.reasoning,
             toRecord(root.chat_template_kwargs).thinking,
             toRecord(root.chat_template_kwargs).enable_thinking,
-          ].some((value) => value === false || value === "false" || value === 0) ||
+          ].some(isExplicitThinkingDisable) ||
           [root.reasoning_effort, toRecord(root.reasoning).effort].some(
             (effort) =>
               typeof effort === "string" &&
