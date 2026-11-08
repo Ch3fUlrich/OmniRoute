@@ -173,6 +173,38 @@ test("review capability exhaustion is not mislabeled as family exclusion", async
   assert.equal(payload.error.code, "capability_mismatch");
 });
 
+test("review policy leaves a target that capability filtering can exhaust without review_target_exhaustion", async () => {
+  saveModelsDevCapabilities({
+    "unit-review-negative": {
+      "gpt-4o": { ...capabilityEntry(128000), tool_call: false },
+    },
+  });
+  const body = {
+    messages: [{ role: "user", content: "review" }],
+    _omnirouteEnvelope: { taskRole: "review", authorModel: "claude-sonnet-4" },
+  };
+  const combo = { name: "review-negative", models: ["unit-review-negative/gpt-4o"] };
+  const policyOnly = await resolveComboTargetPipeline(deps({ combo, body }));
+  assert.ok(!("earlyResponse" in policyOnly), "review policy alone leaves the target");
+  if ("earlyResponse" in policyOnly) return;
+  assert.deepEqual(
+    policyOnly.orderedTargets.map((target) => target.modelStr),
+    combo.models
+  );
+
+  const result = await resolveComboTargetPipeline(
+    deps({
+      combo,
+      body: { ...body, tools: [{ type: "function", function: { name: "read", parameters: {} } }] },
+    })
+  );
+  assert.ok("earlyResponse" in result);
+  if (!("earlyResponse" in result)) return;
+  const payload = await result.earlyResponse.json();
+  assert.notEqual(payload.error.code, "review_target_exhaustion");
+  assert.equal(payload.error.code, "capability_mismatch");
+});
+
 test("benchmark floor resolves provider-prefixed targets against bare DB keys", async () => {
   const { upsertModelBenchmark } = await import("../../src/lib/db/modelBenchmarks.ts");
   const { filterTargetsByRequestCompatibility } =
