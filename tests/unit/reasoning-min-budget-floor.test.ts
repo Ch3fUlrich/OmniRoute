@@ -115,7 +115,7 @@ test("invalid env value is ignored (verbatim passthrough)", () => {
   assert.equal(resolveReasoningBufferedMaxTokens(THINKING, 512), 512);
 });
 
-test("non-thinking model unaffected by floor (returns null = no adjustment)", () => {
+test("non-thinking model unaffected by floor (in-range budget passes through)", () => {
   setEnv("4096");
-  assert.equal(resolveReasoningBufferedMaxTokens("openai/gpt-5.4", 512), null);
+  assert.equal(resolveReasoningBufferedMaxTokens("openai/gpt-5.4", 512), 512);
 });
