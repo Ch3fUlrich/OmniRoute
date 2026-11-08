@@ -59,7 +59,7 @@ test("responses transport: assistant turns with real reasoning keep their text",
 
 test("responses transport: sentinel is NOT promoted for non-presence-enforcing upstreams", () => {
   const body = {
-    model: "deepseek-v4-flash-max",
+    model: "gpt-4o",
     messages: [
       { role: "user", content: "question" },
       {
@@ -70,9 +70,9 @@ test("responses transport: sentinel is NOT promoted for non-presence-enforcing u
       { role: "tool", tool_call_id: "call_1", content: "result" },
     ],
   };
-  for (const provider of ["deepseek", undefined]) {
+  for (const provider of ["openai", undefined]) {
     const out = openaiToOpenAIResponsesRequest(
-      "deepseek-v4-flash-max",
+      "gpt-4o",
       body,
       true,
       provider ? { _provider: provider } : null
