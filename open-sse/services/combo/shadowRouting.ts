@@ -14,6 +14,7 @@
  */
 
 import { secureRandomFloat } from "../../../src/shared/utils/secureRandom";
+import { omitRoutingBodyFields } from "../../config/cliFingerprints.ts";
 import { recordComboShadowRequest } from "../comboMetrics.ts";
 import { isRecord } from "./comboData.ts";
 import { filterVisibleComboTargets, resolveNestedComboTargets } from "./comboStructure.ts";
@@ -96,8 +97,6 @@ export async function drainShadowResponse(response: Response): Promise<void> {
     reader.releaseLock();
   }
 }
-
-import { omitRoutingBodyFields } from "../../config/cliFingerprints.ts";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {

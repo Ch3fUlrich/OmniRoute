@@ -328,9 +328,13 @@ export function openaiToOpenAIResponsesRequest(
         (reasoningIsPlaceholder || !reasoning) &&
         !(
           toRecord(root.thinking).type === "disabled" ||
+          root.thinking === "disabled" ||
           root.thinking === false ||
-          toRecord(root.chat_template_kwargs).thinking === false ||
-          toRecord(root.chat_template_kwargs).enable_thinking === false ||
+          root.reasoning === false ||
+          [
+            toRecord(root.chat_template_kwargs).thinking,
+            toRecord(root.chat_template_kwargs).enable_thinking,
+          ].some((value) => value === false || value === "false" || value === 0) ||
           [root.reasoning_effort, toRecord(root.reasoning).effort].some(
             (effort) =>
               typeof effort === "string" &&
