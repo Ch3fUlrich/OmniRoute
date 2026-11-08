@@ -865,12 +865,13 @@ export function filterTargetsByRequestCompatibility(
         intelligenceMap = new Map(
           Array.from(entries, ([key, entry]) => [key, entry.aaIntelligence])
         );
-      } catch {
-        // Benchmark storage is advisory; routing must survive DB unavailability.
+      } catch (error) {
+        log.warn("COMBO", "Benchmark lookup failed; using built-in intelligence scores", {
+          error: error instanceof Error ? error.name : "unknown",
+        });
       }
     }
     targets = filterTargetsByRequestEnvelope(targets, envelope, intelligenceMap);
-    if (targets.length === 0 && envelope.taskRole === "review") return [];
   }
   const outputLimitAdvisory = options?.outputLimitAdvisory === true;
   const isHardReason = (reason: string) =>

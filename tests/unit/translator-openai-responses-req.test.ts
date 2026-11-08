@@ -517,6 +517,44 @@ test("Chat -> DeepSeek Responses accepts the plaintext reasoning alias", () => {
 // mode must be passed back to the API", so for those providers the placeholder
 // is re-emitted as request scaffolding — it is stripped again from anything
 // client-facing on the way back.
+for (const [label, flags] of Object.entries({
+  "thinking disabled string": { thinking: "disabled" },
+  "reasoning false": { reasoning: false },
+  "kwargs thinking false string": { chat_template_kwargs: { thinking: "false" } },
+  "kwargs thinking zero": { chat_template_kwargs: { thinking: 0 } },
+  "kwargs enable_thinking false string": { chat_template_kwargs: { enable_thinking: "false" } },
+  "kwargs enable_thinking zero": { chat_template_kwargs: { enable_thinking: 0 } },
+})) {
+  test(`DeepSeek Responses explicit disable: ${label} adds no synthetic reasoning`, () => {
+    const result = openaiToOpenAIResponsesRequest(
+      "deepseek-v4-pro",
+      {
+        ...flags,
+        messages: [
+          {
+            role: "assistant",
+            reasoning_content: "(prior reasoning summary unavailable)",
+            tool_calls: [
+              {
+                id: "call_disable",
+                type: "function",
+                function: { name: "search", arguments: "{}" },
+              },
+            ],
+          },
+        ],
+      },
+      false,
+      { _provider: "deepseek" }
+    ) as { input: Array<Record<string, unknown>> };
+    assert.equal(
+      result.input.some((item) => item.type === "reasoning"),
+      false
+    );
+    assert.ok(result.input.some((item) => item.type === "function_call"));
+  });
+}
+
 test("Chat -> DeepSeek Responses re-emits the internal reasoning placeholder as scaffolding", () => {
   const result = openaiToOpenAIResponsesRequest(
     "deepseek-v4-pro",

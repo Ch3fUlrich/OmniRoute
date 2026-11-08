@@ -87,6 +87,156 @@ test("exports resolveComboTargetPipeline", () => {
   assert.equal(typeof resolveComboTargetPipeline, "function");
 });
 
+test("review family exhaustion does not increment combo failure state", async () => {
+  const { getComboFailureCount } = await import("../../open-sse/services/combo/failureTracker.ts");
+  const result = await resolveComboTargetPipeline(
+    deps({
+      combo: {
+        name: "review-exhaustion",
+        models: ["openai/gpt-4o"],
+        context_cache_protection: true,
+      },
+      relayOptions: { sessionId: "review-session" },
+      body: {
+        messages: [{ role: "user", content: "review" }],
+        _omnirouteEnvelope: { taskRole: "review", authorModel: "gpt-4o" },
+      },
+    })
+  );
+  assert.ok("earlyResponse" in result);
+  if (!("earlyResponse" in result)) return;
+  const payload = await result.earlyResponse.json();
+  assert.equal(payload.error.code, "review_target_exhaustion");
+  assert.equal(getComboFailureCount("review-session", "review-exhaustion"), 0);
+});
+
+test("review intelligence soft floor keeps the other-family target without recording failure", async () => {
+  const { upsertModelBenchmark } = await import("../../src/lib/db/modelBenchmarks.ts");
+  const { getComboFailureCount } = await import("../../open-sse/services/combo/failureTracker.ts");
+  upsertModelBenchmark({
+    modelId: "gpt-4o",
+    aaIntelligence: 80,
+    family: "gpt",
+    verifiedTokPerS: 1,
+    costPerTaskUsd: 1,
+    benchmarkSource: "unit-test",
+  });
+  const result = await resolveComboTargetPipeline(
+    deps({
+      combo: {
+        name: "review-intelligence",
+        models: ["openai/gpt-4o"],
+        context_cache_protection: true,
+      },
+      relayOptions: { sessionId: "review-intelligence-session" },
+      body: {
+        messages: [{ role: "user", content: "review" }],
+        _omnirouteEnvelope: {
+          taskRole: "review",
+          authorModel: "claude-sonnet-4",
+          minIntelligence: 90,
+        },
+      },
+    })
+  );
+  assert.ok(!("earlyResponse" in result));
+  if ("earlyResponse" in result) return;
+  assert.deepEqual(
+    result.orderedTargets.map((target) => target.modelStr),
+    ["openai/gpt-4o"]
+  );
+  assert.equal(getComboFailureCount("review-intelligence-session", "review-intelligence"), 0);
+});
+
+test("review capability exhaustion is not mislabeled as family exclusion", async () => {
+  saveModelsDevCapabilities({
+    "unit-review": {
+      "gpt-4o": {
+        ...capabilityEntry(128000),
+        tool_call: false,
+      },
+    },
+  });
+  const result = await resolveComboTargetPipeline(
+    deps({
+      combo: { name: "review-capability", models: ["unit-review/gpt-4o"] },
+      body: {
+        messages: [{ role: "user", content: "review" }],
+        tools: [{ type: "function", function: { name: "read", parameters: {} } }],
+        _omnirouteEnvelope: { taskRole: "review", authorModel: "claude-sonnet-4" },
+      },
+    })
+  );
+  assert.ok("earlyResponse" in result);
+  if (!("earlyResponse" in result)) return;
+  const payload = await result.earlyResponse.json();
+  assert.equal(payload.error.code, "capability_mismatch");
+});
+
+test("review policy leaves a target that capability filtering can exhaust without review_target_exhaustion", async () => {
+  saveModelsDevCapabilities({
+    "unit-review-negative": {
+      "gpt-4o": { ...capabilityEntry(128000), tool_call: false },
+    },
+  });
+  const body = {
+    messages: [{ role: "user", content: "review" }],
+    _omnirouteEnvelope: { taskRole: "review", authorModel: "claude-sonnet-4" },
+  };
+  const combo = { name: "review-negative", models: ["unit-review-negative/gpt-4o"] };
+  const policyOnly = await resolveComboTargetPipeline(deps({ combo, body }));
+  assert.ok(!("earlyResponse" in policyOnly), "review policy alone leaves the target");
+  if ("earlyResponse" in policyOnly) return;
+  assert.deepEqual(
+    policyOnly.orderedTargets.map((target) => target.modelStr),
+    combo.models
+  );
+
+  const result = await resolveComboTargetPipeline(
+    deps({
+      combo,
+      body: { ...body, tools: [{ type: "function", function: { name: "read", parameters: {} } }] },
+    })
+  );
+  assert.ok("earlyResponse" in result);
+  if (!("earlyResponse" in result)) return;
+  const payload = await result.earlyResponse.json();
+  assert.notEqual(payload.error.code, "review_target_exhaustion");
+  assert.equal(payload.error.code, "capability_mismatch");
+});
+
+test("benchmark floor resolves provider-prefixed targets against bare DB keys", async () => {
+  const { upsertModelBenchmark } = await import("../../src/lib/db/modelBenchmarks.ts");
+  const { filterTargetsByRequestCompatibility } =
+    await import("../../open-sse/services/combo/comboStructure.ts");
+  for (const [modelId, aaIntelligence] of [
+    ["unit-low", 10],
+    ["unit-high", 80],
+  ] as const) {
+    upsertModelBenchmark({
+      modelId,
+      aaIntelligence,
+      family: "unit",
+      verifiedTokPerS: 1,
+      costPerTaskUsd: 1,
+      benchmarkSource: "unit-test",
+    });
+  }
+  const targets = ["unit-low", "unit-high"].map((model) => ({
+    provider: "unit",
+    modelStr: `unit/${model}`,
+  }));
+  const result = filterTargetsByRequestCompatibility(
+    targets as never,
+    { _omnirouteEnvelope: { minIntelligence: 50 } },
+    noopLog
+  );
+  assert.deepEqual(
+    result.map((target) => target.modelStr),
+    ["unit/unit-high"]
+  );
+});
+
 test("priority strategy resolves combo models into orderedTargets in declared order", async () => {
   const result = await resolveComboTargetPipeline(deps());
   assert.ok(!("earlyResponse" in result), "expected a resolved pipeline, not an early response");

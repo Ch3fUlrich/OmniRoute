@@ -46,7 +46,7 @@ function functionCallIndexOf(input: InputItem[]): number {
 test("deepseek provider tool-call history without reasoning gets a reasoning item before function_call", () => {
   const { input } = translate(
     "deepseek-v4-flash",
-    { messages: toolCallHistory },
+    { messages: toolCallHistory, reasoning_effort: "high" },
     {
       _provider: "deepseek",
     }
@@ -91,7 +91,11 @@ test("a placeholder reasoning_content on the turn is re-emitted as a reasoning i
     { role: "tool", tool_call_id: "call_1", content: "ok" },
   ];
 
-  const { input } = translate("deepseek-v4-flash", { messages }, { _provider: "deepseek" });
+  const { input } = translate(
+    "deepseek-v4-flash",
+    { messages, reasoning_effort: "high" },
+    { _provider: "deepseek" }
+  );
 
   const reasoningIdx = reasoningIndexOf(input);
   assert.ok(reasoningIdx >= 0, "placeholder reasoning must become a reasoning item");
@@ -111,6 +115,23 @@ test("a deepseek/mimo model id alone is enough to require the reasoning item", (
     ["deepseek-chat", null],
     ["xiaomi/mimo-v2.5-pro", null],
     ["mimo-v2.6-flash", { _provider: "xiaomi-mimo" }],
+    ...[
+      "deepseek-v4-pro",
+      "deepseek-v4-flash",
+      "deepseek-reasoner",
+      "deepseek-v4-flash-20250101",
+      "deepseek-v4-pro-preview",
+      "deepseek-chat-v3-0324",
+    ].flatMap((model) => [
+      [model, {}],
+      [`deepseek/${model}`, {}],
+      [model.toUpperCase(), {}],
+    ]),
+    ...["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-ultra"].flatMap((model) => [
+      [model, {}],
+      [`xiaomi/${model}`, {}],
+      [model.toUpperCase(), {}],
+    ]),
   ] as const) {
     const { input } = translate(model, { messages: toolCallHistory }, credentials);
     const reasoningIdx = reasoningIndexOf(input);
@@ -121,6 +142,25 @@ test("a deepseek/mimo model id alone is enough to require the reasoning item", (
     );
   }
 });
+
+for (const model of [
+  "deepseek-v4-flash-20250101",
+  "deepseek-v4-pro-preview",
+  "deepseek-chat-v3-0324",
+  "mimo-v2.6-ultra",
+]) {
+  for (const id of [model, `${model.startsWith("mimo") ? "xiaomi" : "deepseek"}/${model}`]) {
+    test(`provider-less suffixed model ${id} synthesizes reasoning`, () => {
+      const { input } = translate(id, { messages: toolCallHistory }, {});
+      const index = reasoningIndexOf(input);
+      assert.ok(index >= 0, `${id}: expected synthetic reasoning`);
+      assert.ok(index < functionCallIndexOf(input));
+      assert.deepEqual(input[index].content, [
+        { type: "reasoning_text", text: NON_ANTHROPIC_THINKING_PLACEHOLDER },
+      ]);
+    });
+  }
+}
 
 // Real reasoning is untouched: it passes through verbatim and no placeholder
 // item is added alongside it.
@@ -139,7 +179,11 @@ test("real reasoning passes through verbatim with no placeholder item", () => {
     { role: "tool", tool_call_id: "call_1", content: "ok" },
   ];
 
-  const { input } = translate("deepseek-v4-flash", { messages }, { _provider: "deepseek" });
+  const { input } = translate(
+    "deepseek-v4-flash",
+    { messages, reasoning_effort: "high" },
+    { _provider: "deepseek" }
+  );
 
   const reasoningItems = input.filter((item) => item.type === "reasoning");
   assert.equal(reasoningItems.length, 1, "exactly one reasoning item");
@@ -154,7 +198,11 @@ test("real reasoning passes through verbatim with no placeholder item", () => {
 // Scope guard: providers that do not enforce reasoning presence must not gain
 // a placeholder item (it would leak scaffolding into ordinary OpenAI traffic).
 test('provider "openai" / gpt-5 gets no placeholder reasoning item', () => {
-  const { input } = translate("gpt-5", { messages: toolCallHistory }, { _provider: "openai" });
+  const { input } = translate(
+    "gpt-5",
+    { messages: toolCallHistory, reasoning_effort: "high" },
+    { _provider: "openai" }
+  );
 
   assert.equal(
     reasoningIndexOf(input),
@@ -172,10 +220,71 @@ test('provider "openai" / gpt-5 gets no placeholder reasoning item', () => {
 // Tool-call turns without reasoning on a non-reasoning provider stay unchanged
 // even when the assistant history is empty of reasoning fields entirely.
 test("assistant tool-call turn without reasoning on openai/gpt-5 keeps the plain message + function_call order", () => {
-  const { input } = translate("gpt-5", { messages: toolCallHistory }, null);
+  const { input } = translate(
+    "gpt-5",
+    { messages: toolCallHistory, reasoning_effort: "high" },
+    null
+  );
 
   const types = input.map((item) => item.type);
   // user message, assistant message, function_call, tool output — and nothing
   // else: no reasoning item was injected.
   assert.deepEqual(types, ["message", "message", "function_call", "function_call_output"]);
+});
+
+test("explicitly disabled thinking never synthesizes a reasoning item", () => {
+  for (const controls of [
+    { thinking: { type: "disabled" } },
+    { thinking: false },
+    ...[0, "false", "disabled", "0", "none", "off"].map((thinking) => ({ thinking })),
+    { reasoning: false },
+    { reasoning: "false" },
+    ...["disabled", "false", "0", "none", "off", 0].flatMap((value) => [
+      { chat_template_kwargs: { thinking: value } },
+      { chat_template_kwargs: { enable_thinking: value } },
+    ]),
+    { chat_template_kwargs: { thinking: false } },
+    { chat_template_kwargs: { enable_thinking: false } },
+    ...["none", "off", "disabled", "NONE"].flatMap((effort) => [
+      { reasoning_effort: effort },
+      { reasoning: { effort } },
+    ]),
+  ]) {
+    const { input } = translate(
+      "deepseek-chat",
+      { messages: toolCallHistory, ...controls },
+      { _provider: "deepseek" }
+    );
+    assert.equal(reasoningIndexOf(input), -1, JSON.stringify(controls));
+  }
+});
+test("absent and explicitly enabled thinking synthesize a reasoning item", () => {
+  for (const controls of [
+    {},
+    { thinking: { type: "enabled" } },
+    { thinking: { type: "adaptive" } },
+    { thinking: true },
+    { chat_template_kwargs: { thinking: true } },
+    { chat_template_kwargs: { enable_thinking: true } },
+    { reasoning_effort: "high" },
+    { reasoning: { effort: "high" } },
+  ]) {
+    const { input } = translate(
+      "deepseek-v4-flash",
+      { messages: toolCallHistory, ...controls },
+      { _provider: "deepseek" }
+    );
+    assert.ok(reasoningIndexOf(input) >= 0, JSON.stringify(controls));
+    assert.ok(reasoningIndexOf(input) < functionCallIndexOf(input));
+  }
+});
+test("lookalike family names do not synthesize reasoning", () => {
+  for (const model of ["deepseek-unrelated-model", "mimo-custom", "other/deepseek-chat"]) {
+    const { input } = translate(
+      model,
+      { messages: toolCallHistory, reasoning_effort: "high" },
+      null
+    );
+    assert.equal(reasoningIndexOf(input), -1);
+  }
 });

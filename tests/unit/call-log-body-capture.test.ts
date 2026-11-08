@@ -102,6 +102,34 @@ test("gate off retains error classification without writing an error-only artifa
   assert.equal(fs.existsSync(path.join(dataDir, "call_logs")), false);
 });
 
+test("gate off preserves upstream HTTP row metadata without capturing error prose", async () => {
+  process.env.CALL_LOG_CAPTURE_BODIES = "false";
+  const upstreamHttp = {
+    version: 1,
+    groupId: "00000000-0000-4000-8000-000000000001",
+    role: "logical",
+    send: null,
+    total: 0,
+    failed: 0,
+    omitted: 0,
+    logicalOutcome: "failure",
+  };
+  await saveCallLog({
+    ...entry,
+    id: "metadata-error",
+    status: 502,
+    error: "PRIVATE_PAYLOAD_MARKER",
+    upstreamHttp,
+  });
+  const row = core
+    .getDbInstance()
+    .prepare("SELECT * FROM call_logs WHERE id = ?")
+    .get("metadata-error") as Record<string, unknown>;
+  assert.deepEqual(JSON.parse(String(row.request_summary)), { upstreamHttp });
+  assert.equal(JSON.stringify(row).includes("PRIVATE_PAYLOAD_MARKER"), false);
+  assert.equal(row.detail_state, "none");
+});
+
 test("unset, empty and true write artifacts, and switching off leaves existing details readable", async () => {
   for (const gate of [undefined, "", "true"]) {
     if (gate === undefined) delete process.env.CALL_LOG_CAPTURE_BODIES;
@@ -214,5 +242,43 @@ test("gate off allowlists reasoning effort, including noLog rows", async () => {
     const absolute = path.join(dataDir, String(file));
     if (fs.statSync(absolute).isFile())
       assert.equal(fs.readFileSync(absolute).includes(Buffer.from(marker)), false, String(file));
+  }
+});
+
+test("search summary captures query and filters only when body capture is on", async () => {
+  const upstreamHttp = {
+    version: 1,
+    groupId: "00000000-0000-4000-8000-000000000002",
+    role: "logical",
+    send: null,
+    total: 0,
+    failed: 0,
+    omitted: 0,
+    logicalOutcome: "success",
+  };
+  for (const gate of ["false", "true"]) {
+    process.env.CALL_LOG_CAPTURE_BODIES = gate;
+    const id = `search-summary-${gate}`;
+    await saveCallLog({
+      ...entry,
+      id,
+      requestType: "search",
+      requestBody: { query: "secret text", filters: { category: "unit" } },
+      upstreamHttp,
+    });
+    const row = core
+      .getDbInstance()
+      .prepare("SELECT request_summary FROM call_logs WHERE id = ?")
+      .get(id) as { request_summary: string };
+    const summary = JSON.parse(row.request_summary);
+    if (gate === "false") {
+      assert.deepEqual(summary, { upstreamHttp });
+      assert.equal(row.request_summary.includes("secret text"), false);
+      assert.equal(row.request_summary.includes("filters"), false);
+    } else {
+      assert.equal(summary.query, "secret text");
+      assert.deepEqual(summary.filters, { filters: { category: "unit" } });
+      assert.deepEqual(summary.upstreamHttp, upstreamHttp);
+    }
   }
 });

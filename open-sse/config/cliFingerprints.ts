@@ -294,8 +294,15 @@ const INTERNAL_BODY_FIELD_PREFIX = "_omniroute";
 
 /**
  * Remove omniroute-internal markers from a request body before it is serialized
- * for an upstream. Mutates and returns the same object.
+ * for an upstream. Returns a shallow copy without changing the original.
  */
+export function omitRoutingBodyFields<T extends Record<string, unknown>>(body: T): T {
+  return Object.fromEntries(
+    Object.entries(body).filter(([key]) => !key.startsWith(INTERNAL_BODY_FIELD_PREFIX))
+  ) as T;
+}
+
+/** Remove internal markers in place. Mutates and returns the same object. */
 export function stripInternalBodyFields(
   body: unknown,
   options: { keepExecutorMarkers?: boolean } = {}

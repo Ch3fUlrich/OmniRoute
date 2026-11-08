@@ -14,6 +14,7 @@
  */
 
 import { secureRandomFloat } from "../../../src/shared/utils/secureRandom";
+import { omitRoutingBodyFields } from "../../config/cliFingerprints.ts";
 import { recordComboShadowRequest } from "../comboMetrics.ts";
 import { isRecord } from "./comboData.ts";
 import { filterVisibleComboTargets, resolveNestedComboTargets } from "./comboStructure.ts";
@@ -113,7 +114,10 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   });
 }
 
-function cloneRequestBodyForShadowRouting(body: Record<string, unknown>): Record<string, unknown> {
+export function cloneRequestBodyForShadowRouting(
+  body: Record<string, unknown>
+): Record<string, unknown> {
+  body = omitRoutingBodyFields(body);
   if (typeof structuredClone === "function") {
     return structuredClone(body) as Record<string, unknown>;
   }

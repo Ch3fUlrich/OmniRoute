@@ -156,10 +156,14 @@ function responsesProviderRequiresReasoningPresence(provider: unknown, model: un
     .toLowerCase();
   return (
     normalizedProvider === "xiaomi-mimo" ||
-    /(^|\/)mimo([-/._]|$)/i.test(normalizedModel) ||
+    /^(?:xiaomi\/)?mimo-v\d[\w.-]*$/i.test(normalizedModel) ||
     normalizedProvider === "deepseek" ||
-    /(^|\/)deepseek([-/._]|$)/i.test(normalizedModel)
+    /^(?:deepseek\/)?deepseek-(?:chat|reasoner|v\d)[\w.-]*$/i.test(normalizedModel)
   );
+}
+
+function isExplicitThinkingDisable(value: unknown): boolean {
+  return ["disabled", "false", "0", "none", "off"].includes(String(value).toLowerCase());
 }
 
 export function openaiToOpenAIResponsesRequest(
@@ -322,10 +326,25 @@ export function openaiToOpenAIResponsesRequest(
         });
       } else if (
         (reasoningIsPlaceholder || !reasoning) &&
+        !(
+          toRecord(root.thinking).type === "disabled" ||
+          [
+            root.thinking,
+            root.reasoning,
+            toRecord(root.chat_template_kwargs).thinking,
+            toRecord(root.chat_template_kwargs).enable_thinking,
+          ].some(isExplicitThinkingDisable) ||
+          [root.reasoning_effort, toRecord(root.reasoning).effort].some(
+            (effort) =>
+              typeof effort === "string" &&
+              ["none", "off", "disabled"].includes(effort.toLowerCase())
+          )
+        ) &&
         responsesProviderRequiresReasoningPresence(credentialRecord._provider, model) &&
         Array.isArray(msg.tool_calls) &&
         msg.tool_calls.length > 0
       ) {
+        // DeepSeek/MiMo default to thinking mode unless explicitly disabled.
         // Thinking-mode DeepSeek/MiMo reject a tool-call turn that carries no
         // `reasoning` item (400 "The reasoning_text in the thinking mode must
         // be passed back to the API"). This happens on a reasoning-cache miss:

@@ -7,6 +7,20 @@ const { resetDbInstance } = await import("../../src/lib/db/core.ts");
 
 after(() => resetDbInstance());
 
+test("shadow routing strips envelopes and non-cloneable routing fields", async () => {
+  const { cloneRequestBodyForShadowRouting } =
+    await import("../../open-sse/services/combo/shadowRouting.ts");
+  const body = {
+    messages: [{ role: "user", content: "hi" }],
+    _omnirouteEnvelope: { taskRole: "review" },
+    _omnirouteCallback: () => undefined,
+  };
+  const clone = cloneRequestBodyForShadowRouting(body);
+  assert.deepEqual(clone, { messages: body.messages });
+  assert.notEqual(clone.messages, body.messages);
+  assert.ok(body._omnirouteEnvelope);
+});
+
 function assertNoRawHeaders(value: unknown): void {
   assert.equal(value instanceof Headers, false, "body must not contain Headers");
   if (!value || typeof value !== "object") return;
