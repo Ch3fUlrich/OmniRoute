@@ -110,6 +110,44 @@ test("review family exhaustion does not increment combo failure state", async ()
   assert.equal(getComboFailureCount("review-session", "review-exhaustion"), 0);
 });
 
+test("review intelligence soft floor keeps the other-family target without recording failure", async () => {
+  const { upsertModelBenchmark } = await import("../../src/lib/db/modelBenchmarks.ts");
+  const { getComboFailureCount } = await import("../../open-sse/services/combo/failureTracker.ts");
+  upsertModelBenchmark({
+    modelId: "gpt-4o",
+    aaIntelligence: 80,
+    family: "gpt",
+    verifiedTokPerS: 1,
+    costPerTaskUsd: 1,
+    benchmarkSource: "unit-test",
+  });
+  const result = await resolveComboTargetPipeline(
+    deps({
+      combo: {
+        name: "review-intelligence",
+        models: ["openai/gpt-4o"],
+        context_cache_protection: true,
+      },
+      relayOptions: { sessionId: "review-intelligence-session" },
+      body: {
+        messages: [{ role: "user", content: "review" }],
+        _omnirouteEnvelope: {
+          taskRole: "review",
+          authorModel: "claude-sonnet-4",
+          minIntelligence: 90,
+        },
+      },
+    })
+  );
+  assert.ok(!("earlyResponse" in result));
+  if ("earlyResponse" in result) return;
+  assert.deepEqual(
+    result.orderedTargets.map((target) => target.modelStr),
+    ["openai/gpt-4o"]
+  );
+  assert.equal(getComboFailureCount("review-intelligence-session", "review-intelligence"), 0);
+});
+
 test("review capability exhaustion is not mislabeled as family exclusion", async () => {
   saveModelsDevCapabilities({
     "unit-review": {
