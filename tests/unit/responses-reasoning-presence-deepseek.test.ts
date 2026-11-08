@@ -115,12 +115,16 @@ test("a deepseek/mimo model id alone is enough to require the reasoning item", (
     ["deepseek-chat", null],
     ["xiaomi/mimo-v2.5-pro", null],
     ["mimo-v2.6-flash", { _provider: "xiaomi-mimo" }],
+    ...["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-reasoner"].flatMap((model) => [
+      [model, null],
+      [`deepseek/${model}`, null],
+    ]),
+    ...["mimo-v2.6-pro", "mimo-v2.6-flash"].flatMap((model) => [
+      [model, null],
+      [`xiaomi/${model}`, null],
+    ]),
   ] as const) {
-    const { input } = translate(
-      model,
-      { messages: toolCallHistory, reasoning_effort: "high" },
-      credentials
-    );
+    const { input } = translate(model, { messages: toolCallHistory }, credentials);
     const reasoningIdx = reasoningIndexOf(input);
     assert.ok(reasoningIdx >= 0, `${model}: expected a reasoning item`);
     assert.ok(
@@ -200,14 +204,43 @@ test("assistant tool-call turn without reasoning on openai/gpt-5 keeps the plain
   assert.deepEqual(types, ["message", "message", "function_call", "function_call_output"]);
 });
 
-test("disabled and absent reasoning never synthesize a reasoning item", () => {
-  for (const controls of [{}, { reasoning_effort: "none" }, { thinking: { type: "disabled" } }]) {
+test("explicitly disabled thinking never synthesizes a reasoning item", () => {
+  for (const controls of [
+    { thinking: { type: "disabled" } },
+    { thinking: false },
+    { chat_template_kwargs: { thinking: false } },
+    { chat_template_kwargs: { enable_thinking: false } },
+    ...["none", "off", "disabled", "NONE"].flatMap((effort) => [
+      { reasoning_effort: effort },
+      { reasoning: { effort } },
+    ]),
+  ]) {
     const { input } = translate(
       "deepseek-chat",
       { messages: toolCallHistory, ...controls },
       { _provider: "deepseek" }
     );
     assert.equal(reasoningIndexOf(input), -1);
+  }
+});
+test("absent and explicitly enabled thinking synthesize a reasoning item", () => {
+  for (const controls of [
+    {},
+    { thinking: { type: "enabled" } },
+    { thinking: { type: "adaptive" } },
+    { thinking: true },
+    { chat_template_kwargs: { thinking: true } },
+    { chat_template_kwargs: { enable_thinking: true } },
+    { reasoning_effort: "high" },
+    { reasoning: { effort: "high" } },
+  ]) {
+    const { input } = translate(
+      "deepseek-v4-flash",
+      { messages: toolCallHistory, ...controls },
+      { _provider: "deepseek" }
+    );
+    assert.ok(reasoningIndexOf(input) >= 0, JSON.stringify(controls));
+    assert.ok(reasoningIndexOf(input) < functionCallIndexOf(input));
   }
 });
 test("lookalike family names do not synthesize reasoning", () => {

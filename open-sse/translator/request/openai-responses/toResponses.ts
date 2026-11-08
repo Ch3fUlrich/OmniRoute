@@ -326,20 +326,22 @@ export function openaiToOpenAIResponsesRequest(
         });
       } else if (
         (reasoningIsPlaceholder || !reasoning) &&
-        (toRecord(root.thinking).type === "enabled" ||
-          toRecord(root.thinking).type === "adaptive" ||
-          root.thinking === true ||
-          toRecord(root.chat_template_kwargs).thinking === true ||
-          toRecord(root.chat_template_kwargs).enable_thinking === true ||
+        !(
+          toRecord(root.thinking).type === "disabled" ||
+          root.thinking === false ||
+          toRecord(root.chat_template_kwargs).thinking === false ||
+          toRecord(root.chat_template_kwargs).enable_thinking === false ||
           [root.reasoning_effort, toRecord(root.reasoning).effort].some(
             (effort) =>
               typeof effort === "string" &&
-              !["none", "off", "disabled", ""].includes(effort.toLowerCase())
-          )) &&
+              ["none", "off", "disabled"].includes(effort.toLowerCase())
+          )
+        ) &&
         responsesProviderRequiresReasoningPresence(credentialRecord._provider, model) &&
         Array.isArray(msg.tool_calls) &&
         msg.tool_calls.length > 0
       ) {
+        // DeepSeek/MiMo default to thinking mode unless explicitly disabled.
         // Thinking-mode DeepSeek/MiMo reject a tool-call turn that carries no
         // `reasoning` item (400 "The reasoning_text in the thinking mode must
         // be passed back to the API"). This happens on a reasoning-cache miss:
