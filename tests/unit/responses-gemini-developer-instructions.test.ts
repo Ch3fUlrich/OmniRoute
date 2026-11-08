@@ -113,7 +113,7 @@ function assertInstructions(wire: WireRequest, target: string, expected: string[
   }
 }
 
-function assertHistory(wire: WireRequest) {
+function assertHistory(wire: WireRequest, target: string) {
   const contents = wire.contents;
   const parts = contents.flatMap((content) => content.parts);
   assert.deepEqual(
@@ -122,8 +122,11 @@ function assertHistory(wire: WireRequest) {
       "ENV037_CONTEXT",
       "HISTORY037_ANSWER",
       "USER037_QUESTION",
-      "USER037_FOLLOWUP",
-      "TOOL037_RESULT",
+      // Direct Gemini splits the result from follow-up text so the result
+      // immediately follows its functionCall turn. Cloud Code keeps its mixed turn.
+      ...(target === FORMATS.GEMINI
+        ? ["TOOL037_RESULT", "USER037_FOLLOWUP"]
+        : ["USER037_FOLLOWUP", "TOOL037_RESULT"]),
     ]
   );
   assert.ok(
@@ -178,7 +181,7 @@ for (const target of targets) {
     const original = structuredClone(body);
     const wire = translate(body, target);
     assertInstructions(wire, target, instructionTexts);
-    assertHistory(wire);
+    assertHistory(wire, target);
     assert.deepEqual(body, original);
   });
 

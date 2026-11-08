@@ -69,7 +69,11 @@ export function resolveReasoningBufferedMaxTokens(
   // cannot consume the whole budget. #9507 contract preserved — the env IS the
   // opt-in. The floor is itself capped by the model's output cap.
   const minBudget = getReasoningMinBudget();
-  if (minBudget !== null && current < minBudget) {
+  if (
+    minBudget !== null &&
+    current < minBudget &&
+    getResolvedModelCapabilities(modelStr).supportsThinking === true
+  ) {
     const floored = Math.min(minBudget, maxOutputTokens);
     if (floored > current) return floored;
   }
