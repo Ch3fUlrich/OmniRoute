@@ -56,6 +56,9 @@ jobs:
             tests/unit/combo-routing-engine.test.ts \
             tests/unit/param-support-qwen3-235b-clamp.test.ts \
             tests/unit/responses-reasoning-presence-deepseek.test.ts \
+            tests/unit/opencode-reasoning-presence-responses.test.ts \
+            tests/unit/reasoning-min-budget-floor.test.ts \
+            tests/unit/responses-gemini-developer-instructions.test.ts \
             tests/unit/translator-openai-responses-req.test.ts \
             tests/unit/reasoning-cache.test.ts \
             tests/unit/tool-request-sanitization.test.ts
